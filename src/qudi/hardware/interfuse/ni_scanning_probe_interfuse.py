@@ -419,6 +419,8 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
             first_scan_position = {ax: pos[0] for ax, pos
                                    in zip(self.scan_settings['axes'], self.scan_settings['range'])}
+            #print("ni_scn_probe_inerfuce, _start_scan")
+            #print(first_scan_position)
             self._move_to_and_start_scan(first_scan_position)
 
         except Exception:
@@ -562,7 +564,6 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         @return np.array/single value: Position(s) converted to voltage(s) (value(s)) [single value & 1D np.array depending on input]
                       for corresponding ni_channel (keys)
         """
-
         ni_channel = self._ni_channel_mapping[axis]
         voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
         position_range = self.get_constraints().axes[axis].value_range
@@ -578,6 +579,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         except ValueError:
             voltage_data = converted
 
+        #print("pos_to_volt", axis, voltage_data)
         return voltage_data
 
     def _pos_dict_to_vec(self, position):
@@ -811,6 +813,8 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
                     new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, pos)
                                    for ax, pos in new_pos.items()}
 
+                    #new_voltage['ao3'] = 3.0
+                    #print("ao_cursor_write", new_voltage)
                     self._ni_ao().setpoints = new_voltage
                     #self.log.debug(f'Cursor_write_loop move to {new_pos}, Dist= {distance_to_target} '
                     #               f' to target {self._target_pos} took {1e3*(time.perf_counter()-t_start)} ms.')

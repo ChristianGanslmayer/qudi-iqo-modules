@@ -891,7 +891,9 @@ class SequenceGeneratorLogic(LogicBase):
         if os.path.exists(filepath):
             try:
                 with open(filepath, 'rb') as file:
+                    print("in print",file)
                     ensemble = pickle.load(file)
+
             except pickle.UnpicklingError:
                 self.log.error('Failed to de-serialize PulseBlockEnsemble "{0}" from file. '
                                'Deleting broken file.'.format(ensemble_name))
@@ -1875,6 +1877,10 @@ class SequenceGeneratorLogic(LogicBase):
                         # if the rotating frame should be preserved (default) increment the offset
                         # counter for the time array.
                         if ensemble.rotating_frame:
+                            if samples_to_add == (self.__sample_rate *1.5e-6):
+                                offset_bin = 0
+                            else:
+                                offset_bin += samples_to_add
                             offset_bin += samples_to_add
 
                         # Check if the temporary sample array is full and write to the device if so.

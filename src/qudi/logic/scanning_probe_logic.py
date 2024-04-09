@@ -502,14 +502,17 @@ class ScanningProbeLogic(LogicBase):
                 return 0
 
             scan_axes = tuple(scan_axes)
+
             self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
 
             self.module_state.lock()
-
+            #print(tuple(self._scan_ranges[ax] for ax in scan_axes))
+            #print(scan_axes)
             settings = {'axes': scan_axes,
                         'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
                         'resolution': tuple(self._scan_resolution[ax] for ax in scan_axes),
                         'frequency': self._scan_frequency[scan_axes[0]]}
+
             fail, new_settings = self._scanner().configure_scan(settings)
             if fail:
                 self.module_state.unlock()

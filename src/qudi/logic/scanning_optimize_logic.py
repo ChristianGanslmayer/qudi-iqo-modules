@@ -298,7 +298,10 @@ class ScanningOptimizeLogic(LogicBase):
             curr_pos = self._scan_logic().scanner_target
             optim_ranges = {ax: (pos - self._scan_range[ax] / 2, pos + self._scan_range[ax] / 2) for
                             ax, pos in curr_pos.items()}
+            #optim_ranges['a'] = (50e-6,50e-6)
+            #print(optim_ranges)
             actual_setting = self._scan_logic().set_scan_range(optim_ranges)
+            #print(actual_setting)
             # FIXME: Comparing floats by inequality here
             if any(val != optim_ranges[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan ranges have been changed by the scanner.')
