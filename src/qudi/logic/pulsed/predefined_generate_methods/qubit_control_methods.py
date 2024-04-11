@@ -21470,8 +21470,7 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
     def generate_QuantumCircuitQB12(self, name='quantumcircuitQB12', Initial_state=TQstates.State00, NV_Cpi_len=1.0e-6,
                                     NV_Cpi_amp=0.05, NV_Cpi_freq1=1.432e9,
                                   RF_freq0=5.1e6, RF_amp0=0.02,  RF_freq1=5.1e6, RF_amp1=0.02, cyclesf=9, DD_N=2, RF_pi=20.0e-6,
-                                  gate_oper1=Gates.NOOP, gate_oper2=Gates.NOOP, gate_oper3=Gates.NOOP,
-                                  gate_oper4=Gates.NOOP, gate_oper5=Gates.NOOP, gate_oper6=Gates.NOOP,
+                                  gate_operations = "NOOP, ucq1pi",
                                   laser_on=20.0e-9, laser_off=60.0e-9):
         """
 
@@ -21480,29 +21479,8 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles = list()
         created_sequences = list()
 
-        initstate_value=Initial_state.value
-        oper1_value = gate_oper1.value
-        oper2_value = gate_oper2.value
-        oper3_value = gate_oper3.value
-        oper4_value = gate_oper4.value
-        oper5_value = gate_oper5.value
-        oper6_value = gate_oper6.value
-
-        # get tau array for measurement ticks
-        tau_array = (0) + np.arange(4) * (1)
-
-        # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time,
-                                                 increment=0)
-        delay_element = self._get_idle_element(length=self.laser_delay,
-                                                 increment=0)
-        laser_block = []
-        laser_reps = int(self.laser_length / (laser_on + laser_off))
-        for n in range(laser_reps):
-            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
-            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
-
-
+        initstate_value = Initial_state.value
+        oper_list = [Gates[oper].value for oper in gate_operations.replace(" ", "").split(",")]
 
         q1phasex = 0.0
         q1phasey = 90.0
@@ -21511,120 +21489,106 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
         q2phasesx = [0.0, 0.0]
         q2phasesy = [90.0, 90.0]
 
-        UCQ1pix_element = self._get_mw_element(length=self.rabi_period /2,
-                                                  increment=0,
-                                                  amp=self.microwave_amplitude,
-                                                  freq=self.microwave_frequency,
-                                                  phase=q1phasex)
-
-        UCQ1pihalfx_element = self._get_mw_element(length=self.rabi_period /4,
-                                                  increment=0,
-                                                  amp=self.microwave_amplitude,
-                                                  freq=self.microwave_frequency,
-                                                  phase=q1phasex)
-        UCQ1pihalfy_element = self._get_mw_element(length=self.rabi_period / 4,
-                                                   increment=0,
-                                                   amp=self.microwave_amplitude,
-                                                   freq=self.microwave_frequency,
-                                                   phase=q1phasey)
-
-
         freqs = [RF_freq0, RF_freq1]
         amps = [RF_amp0, RF_amp1]
 
-
-        UCQ2pix_element = self._get_multiple_rf_element(length=RF_pi,
+        operation_elements = {
+            'UCQ1pix': self._get_mw_element(length=self.rabi_period /2,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=q1phasex),
+            'UCQ1pihalfx': self._get_mw_element(length=self.rabi_period /4,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=q1phasex),
+            'UCQ1pihalfy': self._get_mw_element(length=self.rabi_period / 4,
+                                                   increment=0,
+                                                   amp=self.microwave_amplitude,
+                                                   freq=self.microwave_frequency,
+                                                   phase=q1phasey),
+            'UCQ2pix': self._get_multiple_rf_element(length=RF_pi,
                                                increment=0,
                                                amps=amps,
                                                freqs=freqs,
-                                               phases=q2phasesx)
-
-        UCQ2pihalfx_element = self._get_multiple_rf_element(length=RF_pi/2,
+                                               phases=q2phasesx),
+            'UCQ2pihalfx': self._get_multiple_rf_element(length=RF_pi/2,
                                                increment=0,
                                                amps=amps,
                                                freqs=freqs,
-                                               phases=q2phasesx)
-        UCQ2pihalfy_element = self._get_multiple_rf_element(length=RF_pi/2,
+                                               phases=q2phasesx),
+            'UCQ2pihalfy': self._get_multiple_rf_element(length=RF_pi/2,
                                                increment=0,
                                                amps=amps,
                                                freqs=freqs,
-                                               phases=q2phasesy)
-
-        CQ1pix_element = self._get_mw_element(length= NV_Cpi_len,
+                                               phases=q2phasesy),
+            'CQ1pix': self._get_mw_element(length= NV_Cpi_len,
                                                   increment=0,
                                                   amp=NV_Cpi_amp,
                                                   freq=NV_Cpi_freq1,
-                                                  phase=q1phasex)
-
-        CQ1pihalfx_element = self._get_mw_element(length=NV_Cpi_len /2,
+                                                  phase=q1phasex),
+            'CQ1pihalfx': self._get_mw_element(length=NV_Cpi_len /2,
                                                   increment=0,
                                                   amp=NV_Cpi_amp,
                                                   freq=NV_Cpi_freq1,
-                                                  phase=q1phasex)
-        CQ1pihalfy_element = self._get_mw_element(length=NV_Cpi_len /2,
+                                                  phase=q1phasex),
+            'CQ1pihalfy': self._get_mw_element(length=NV_Cpi_len /2,
                                                    increment=0,
                                                    amp=NV_Cpi_amp,
                                                    freq=NV_Cpi_freq1,
-                                                   phase=q1phasey)
-
-        CQ2pix_element = self._get_rf_element(length= RF_pi,
+                                                   phase=q1phasey),
+            'CQ2pix': self._get_rf_element(length= RF_pi,
                                                   increment=0,
                                                   amp=RF_amp0,
                                                   freq=RF_freq0,
-                                                  phase=q2phasex)
-
-        CQ2pihalfx_element = self._get_rf_element(length=RF_pi/2,
+                                                  phase=q2phasex),
+            'CQ2pihalfx': self._get_rf_element(length=RF_pi/2,
                                                   increment=0,
                                                   amp=RF_amp0,
                                                   freq=RF_freq0,
-                                                  phase=q2phasex)
-        CQ2pihalfy_element = self._get_rf_element(length=RF_pi/2,
+                                                  phase=q2phasex),
+            'CQ2pihalfy': self._get_rf_element(length=RF_pi/2,
                                                    increment=0,
                                                    amp=RF_amp0,
                                                    freq=RF_freq0,
-                                                   phase=q2phasey)
-
-        cQ2pix_element = self._get_rf_element(length= RF_pi,
+                                                   phase=q2phasey),
+            'cQ2pix': self._get_rf_element(length= RF_pi,
                                                   increment=0,
                                                   amp=RF_amp1,
                                                   freq=RF_freq1,
-                                                  phase=q2phasex) # selective RF for NV Ms = 1
-
-        cQ2pihalfx_element = self._get_rf_element(length=RF_pi/2,
+                                                  phase=q2phasex), # selective RF for NV Ms = 1
+            'cQ2pihalfx': self._get_rf_element(length=RF_pi/2,
                                                   increment=0,
                                                   amp=RF_amp1,
                                                   freq=RF_freq1,
-                                                  phase=q2phasex) # selective RF for NV Ms = 1
-        cQ2pihalfy_element = self._get_rf_element(length=RF_pi/2,
+                                                  phase=q2phasex), # selective RF for NV Ms = 1
+            'cQ2pihalfy': self._get_rf_element(length=RF_pi/2,
                                                    increment=0,
                                                    amp=RF_amp1,
                                                    freq=RF_freq1,
-                                                   phase=q2phasey) # selective RF for NV Ms = 1
-
-
-
-
-
-        NOOP_element = self._get_idle_element(length=0.0e-9,
-                                              increment=0)
-
-        MWpix_element = self._get_mw_element(length=self.rabi_period / 2,
+                                                   phase=q2phasey), # selective RF for NV Ms = 1
+            'NOOP': self._get_idle_element(length=0.0e-9,
+                                              increment=0),
+            'MWpix': self._get_mw_element(length=self.rabi_period / 2,
                                                  increment=0,
                                                  amp=self.microwave_amplitude,
                                                  freq=self.microwave_frequency,
-                                                 phase=q1phasex)
-        MWpiy_element = self._get_mw_element(length=self.rabi_period / 2,
+                                                 phase=q1phasex),
+            'MWpiy': self._get_mw_element(length=self.rabi_period / 2,
                                                increment=0,
                                                amp=self.microwave_amplitude,
                                                freq=self.microwave_frequency,
-                                               phase=q1phasey)
-
-        MWidle_element = self._get_idle_element(length=self.rabi_period / 2, increment=0)
+                                               phase=q1phasey),
+            'MWidle': self._get_idle_element(length=self.rabi_period / 2, increment=0),
+        }
 
         tau = cyclesf * (1 / RF_freq1) + 1.0e-9
         rot_phase = 0
         pulse_blockC0q2 = []
         tau_countc0 = 1
+        pulse_blockC1q2 = []
+        tau_countc1 = 1
         cycles = ((2 * np.pi * RF_freq1) * (tau)) // (2 * np.pi)
         tau_pulse = (2 * np.pi * cycles) / (2 * np.pi * RF_freq1)
         tau_idle = ((tau) - tau_pulse) / 2
@@ -21633,543 +21597,69 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
                                  0.0,
                                  tau,
                                  q2phasex)
-        for n in range(1, DD_N+1):
-            if n%4==1:
-                if n!=1:
-                    del pulse_blockC0q2[len(pulse_blockC0q2)-3:len(pulse_blockC0q2)]
-                    #k=1
-                    if tau_countc0 % 2 != 0:
-                        RF_phase = np.mod(((tau_countc0-1)*phase) + 180 +rot_phase, 360)
-                    else:
-                        RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
 
-
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-
-
-                    RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                             increment=0,
-                                                             amp=RF_amp1,
-                                                             freq=RF_freq1,
-                                                             phase=RF_phase)
-
-                    pulse_blockC0q2.append(tauidle_element)
-                    pulse_blockC0q2.append(RFtau_element)
-                    pulse_blockC0q2.append(tauidle_element)
-
-                else:
-
-                    if tau_countc0 % 2 != 0:
-                        RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                    else:
-                        RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-                    tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-                    RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                             increment=0,
-                                                             amp=RF_amp1,
-                                                             freq=RF_freq1,
-                                                             phase=RF_phase)
-
-                    pulse_blockC0q2.append(tauidle_element)
-                    pulse_blockC0q2.append(RFtau_element)
-                    pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpix_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=2
-
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-
-
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpiy_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=3
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-
-                RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-            if n % 4 == 2:
-                del pulse_blockC0q2[len(pulse_blockC0q2)-3:len(pulse_blockC0q2)]
-                #k=4
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpix_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=5
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpiy_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=6
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-            if n % 4 == 3:
-                del pulse_blockC0q2[len(pulse_blockC0q2)-3:len(pulse_blockC0q2)]
-                #k=7
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpiy_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=8
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpix_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=9
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-            if n % 4 == 0:
-
-                del pulse_blockC0q2[len(pulse_blockC0q2)-3:len(pulse_blockC0q2)]
-                #k=10
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpiy_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=11
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-                pulse_blockC0q2.append(MWpix_element)
-                tau_countc0 = tau_countc0 + 1
-
-                #k=12
-                if tau_countc0 % 2 != 0:
-                    RF_phase = np.mod(((tau_countc0-1)*phase) + 180+rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc0-1)*phase)+rot_phase, 360)
-
-
-                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                         increment=0,
-                                                         amp=RF_amp1,
-                                                         freq=RF_freq1,
-                                                         phase=RF_phase)
-
-                pulse_blockC0q2.append(tauidle_element)
-                pulse_blockC0q2.append(RFtau_element)
-                pulse_blockC0q2.append(tauidle_element)
-
-        pulse_blockC1q2 = []
-        tau_countc1 = 1
-        for n in range(1, DD_N + 1):
-            if n % 4 == 1:
+        for tau_count, pulse_blockC in zip([tau_countc0, tau_countc1], [pulse_blockC0q2, pulse_blockC1q2]):
+            for n in range(1, DD_N+1):
                 if n != 1:
-                    del pulse_blockC1q2[len(pulse_blockC1q2) - 3:len(pulse_blockC1q2)]
-                    # k=1
-                    if tau_countc1 % 2 == 0:
-                        RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                    else:
-                        RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
+                    del pulse_blockC[len(pulse_blockC) - 3:len(pulse_blockC)]
+                    numTau = 2
+                else:
+                    numTau = 1
 
-                    tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
+                #k=1,4,7,10
+                if tau_count % 2 != 0:
+                    RF_phase = np.mod(((tau_count-1)*phase) + 180+rot_phase, 360)
+                else:
+                    RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                    RFtau_element = self._get_rf_element(length=2 * tau_pulse,
+                tauidle_element = self._get_idle_element(length=numTau*tau_idle, increment=0)
+                RFtau_element = self._get_rf_element(length=numTau*tau_pulse,
                                                          increment=0,
                                                          amp=RF_amp1,
                                                          freq=RF_freq1,
                                                          phase=RF_phase)
+                pulse_blockC.append(tauidle_element)
+                pulse_blockC.append(RFtau_element)
+                pulse_blockC.append(tauidle_element)
+                rotAx = 'x' if n%4 in (1,2) else 'y'
+                pulse_blockC.append(operation_elements['MWpi'+rotAx])
+                tau_count = tau_count + 1
 
-                    pulse_blockC1q2.append(tauidle_element)
-                    pulse_blockC1q2.append(RFtau_element)
-                    pulse_blockC1q2.append(tauidle_element)
-
+                #k=2,5,8,11
+                if tau_count % 2 != 0:
+                    RF_phase = np.mod(((tau_count-1)*phase) + 180+rot_phase, 360)
                 else:
+                    RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                    if tau_countc1 % 2 == 0:
-                        RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                    else:
-                        RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                    tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-                    RFtau_element = self._get_rf_element(length=tau_pulse,
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
                                                          amp=RF_amp1,
                                                          freq=RF_freq1,
                                                          phase=RF_phase)
+                pulse_blockC.append(tauidle_element)
+                pulse_blockC.append(RFtau_element)
+                pulse_blockC.append(tauidle_element)
+                rotAx = 'y' if n%4 in (1,2) else 'x'
+                pulse_blockC.append(operation_elements['MWpi'+rotAx])
+                tau_count = tau_count + 1
 
-                    pulse_blockC1q2.append(tauidle_element)
-                    pulse_blockC1q2.append(RFtau_element)
-                    pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpix_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=2
-
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
+                #k=3,6,9,12
+                if tau_count % 2 != 0:
+                    RF_phase = np.mod(((tau_count-1)*phase) + 180+rot_phase, 360)
                 else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
-
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpiy_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=3
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-
-                RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-            if n % 4 == 2:
-                del pulse_blockC1q2[len(pulse_blockC1q2) - 3:len(pulse_blockC1q2)]
-                # k=4
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
-
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpix_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=5
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpiy_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=6
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
+                    RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
                 tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
                 RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
+                                                         increment=0,
+                                                         amp=RF_amp1,
+                                                         freq=RF_freq1,
+                                                         phase=RF_phase)
+                pulse_blockC.append(tauidle_element)
+                pulse_blockC.append(RFtau_element)
+                pulse_blockC.append(tauidle_element)
 
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-            if n % 4 == 3:
-                del pulse_blockC1q2[len(pulse_blockC1q2) - 3:len(pulse_blockC1q2)]
-                # k=7
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpiy_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=8
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpix_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=9
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-            if n % 4 == 0:
-
-                del pulse_blockC1q2[len(pulse_blockC1q2) - 3:len(pulse_blockC1q2)]
-                # k=10
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpiy_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=11
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=2 * tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=2 * tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
-
-                pulse_blockC1q2.append(MWpix_element)
-                tau_countc1 = tau_countc1 + 1
-
-                # k=12
-                if tau_countc1 % 2 == 0:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + 180 + rot_phase, 360)
-                else:
-                    RF_phase = np.mod(((tau_countc1 - 1) * phase) + rot_phase, 360)
-
-                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
-                RFtau_element = self._get_rf_element(length=tau_pulse,
-                                                     increment=0,
-                                                     amp=RF_amp1,
-                                                     freq=RF_freq1,
-                                                     phase=RF_phase)
-
-                pulse_blockC1q2.append(tauidle_element)
-                pulse_blockC1q2.append(RFtau_element)
-                pulse_blockC1q2.append(tauidle_element)
 
         pulse_blockucq2 = []
         tau_countuc = (2 * DD_N) + 1
@@ -22403,44 +21893,27 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
 
 
 
-
-        statetomo_block = PulseBlock(name=name)
-
+        # create blocks for initialization
         initialblock_list=[]
-        for i, state in enumerate(initstate_value):
-            if state == '00':
-                initialblock_list.append(NOOP_element)
-            if state == '01':
-                for k, pulse in enumerate(pulse_blockC0q2):
-                    initialblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    initialblock_list.append(pulse)
-            if state == '10':
-                initialblock_list.append(CQ1pix_element)
-            if state == '11':
-                initialblock_list.append(CQ1pix_element)
-                for k, pulse in enumerate(pulse_blockC1q2):
-                    initialblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    initialblock_list.append(pulse)
+        if state == '00':
+            initialblock_list.append(operation_elements['NOOP'])
+        if state == '01':
+            for k, pulse in enumerate(pulse_blockC0q2):
+                initialblock_list.append(pulse)
+            for uk, pulse in enumerate(pulse_blockucq2):
+                initialblock_list.append(pulse)
+        if state == '10':
+            initialblock_list.append(operation_elements['CQ1pix'])
+        if state == '11':
+            initialblock_list.append(operation_elements['CQ1pix'])
+            for k, pulse in enumerate(pulse_blockC1q2):
+                initialblock_list.append(pulse)
+            for uk, pulse in enumerate(pulse_blockucq2):
+                initialblock_list.append(pulse)
 
-
+        # create blocks for executing circuit operations
         opersblock_list=[]
-        for i, oper in enumerate(oper1_value):
-            if oper == 'NOOP':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pihalfx':
-                opersblock_list.append(UCQ1pihalfx_element)
-            if oper == 'UCQ1pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pi':
-                opersblock_list.append(UCQ1pix_element)
-            if oper == 'UCQ2pihalfx':
-                opersblock_list.append(UCQ2pihalfx_element)
-            if oper == 'UCQ2pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ2pi':
-                opersblock_list.append(UCQ2pix_element)
+        for oper in oper_list:
             if oper == 'C0q2NOT':
                 for k, pulse in enumerate(pulse_blockC0q2):
                     opersblock_list.append(pulse)
@@ -22451,205 +21924,60 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
                     opersblock_list.append(pulse)
                 for uk, pulse in enumerate(pulse_blockucq2):
                     opersblock_list.append(pulse)
+            else:
+                opersblock_list.append(operation_elements[oper])
 
 
-        for i, oper in enumerate(oper2_value):
-            if oper == 'NOOP':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pihalfx':
-                opersblock_list.append(UCQ1pihalfx_element)
-            if oper == 'UCQ1pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pi':
-                opersblock_list.append(UCQ1pix_element)
-            if oper == 'UCQ2pihalfx':
-                opersblock_list.append(UCQ2pihalfx_element)
-            if oper == 'UCQ2pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ2pi':
-                opersblock_list.append(UCQ2pix_element)
-            if oper == 'C0q2NOT':
-                for k, pulse in enumerate(pulse_blockC0q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-            if oper == 'C1q2NOT':
-                for k, pulse in enumerate(pulse_blockC1q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-
-        for i, oper in enumerate(oper3_value):
-            if oper == 'NOOP':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pihalfx':
-                opersblock_list.append(UCQ1pihalfx_element)
-            if oper == 'UCQ1pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pi':
-                opersblock_list.append(UCQ1pix_element)
-            if oper == 'UCQ2pihalfx':
-                opersblock_list.append(UCQ2pihalfx_element)
-            if oper == 'UCQ2pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ2pi':
-                opersblock_list.append(UCQ2pix_element)
-            if oper == 'C0q2NOT':
-                for k, pulse in enumerate(pulse_blockC0q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-            if oper == 'C1q2NOT':
-                for k, pulse in enumerate(pulse_blockC1q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-
-        for i, oper in enumerate(oper4_value):
-            if oper == 'NOOP':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pihalfx':
-                opersblock_list.append(UCQ1pihalfx_element)
-            if oper == 'UCQ1pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pi':
-                opersblock_list.append(UCQ1pix_element)
-            if oper == 'UCQ2pihalfx':
-                opersblock_list.append(UCQ2pihalfx_element)
-            if oper == 'UCQ2pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ2pi':
-                opersblock_list.append(UCQ2pix_element)
-            if oper == 'C0q2NOT':
-                for k, pulse in enumerate(pulse_blockC0q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-            if oper == 'C1q2NOT':
-                for k, pulse in enumerate(pulse_blockC1q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-
-        for i, oper in enumerate(oper5_value):
-            if oper == 'NOOP':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pihalfx':
-                opersblock_list.append(UCQ1pihalfx_element)
-            if oper == 'UCQ1pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pi':
-                opersblock_list.append(UCQ1pix_element)
-            if oper == 'UCQ2pihalfx':
-                opersblock_list.append(UCQ2pihalfx_element)
-            if oper == 'UCQ2pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ2pi':
-                opersblock_list.append(UCQ2pix_element)
-            if oper == 'C0q2NOT':
-                for k, pulse in enumerate(pulse_blockC0q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-            if oper == 'C1q2NOT':
-                for k, pulse in enumerate(pulse_blockC1q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-
-        for i, oper in enumerate(oper6_value):
-            if oper == 'NOOP':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pihalfx':
-                opersblock_list.append(UCQ1pihalfx_element)
-            if oper == 'UCQ1pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ1pi':
-                opersblock_list.append(UCQ1pix_element)
-            if oper == 'UCQ2pihalfx':
-                opersblock_list.append(UCQ2pihalfx_element)
-            if oper == 'UCQ2pihalfz':
-                opersblock_list.append(NOOP_element)
-            if oper == 'UCQ2pi':
-                opersblock_list.append(UCQ2pix_element)
-            if oper == 'C0q2NOT':
-                for k, pulse in enumerate(pulse_blockC0q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
-            if oper == 'C1q2NOT':
-                for k, pulse in enumerate(pulse_blockC1q2):
-                    opersblock_list.append(pulse)
-                for uk, pulse in enumerate(pulse_blockucq2):
-                    opersblock_list.append(pulse)
+        # create blocks for readout of populations of computational basis states
+        waiting_element = self._get_idle_element(length=self.wait_time,
+                                                 increment=0)
+        delay_element = self._get_idle_element(length=self.laser_delay,
+                                                 increment=0)
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
 
         readblock00_list = []
         readblock01_list = []
         readblock10_list = []
         readblock11_list = []
 
-        readblock00_list.append(NOOP_element)
+        readblock00_list.append(operation_elements['NOOP'])
 
         for k, pulse in enumerate(pulse_blockC0q2):
             readblock01_list.append(pulse)
         for uk, pulse in enumerate(pulse_blockucq2):
             readblock01_list.append(pulse)
 
-        readblock10_list.append(CQ1pix_element)
+        readblock10_list.append(operation_elements['CQ1pix'])
 
         for k, pulse in enumerate(pulse_blockC1q2):
             readblock11_list.append(pulse)
         for uk, pulse in enumerate(pulse_blockucq2):
             readblock11_list.append(pulse)
 
-        for i, pulse in enumerate(initialblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(opersblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(readblock00_list):
-            statetomo_block.append(pulse)
-        for i, laser_trig in enumerate(laser_block):
-            statetomo_block.append(laser_trig)
-        statetomo_block.append(waiting_element)
-        statetomo_block.append(delay_element)
+        # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
+        statetomo_block = PulseBlock(name=name)
+        for readout_block in [readblock00_list, readblock01_list, readblock10_list, readblock11_list]:
+            for pulse initialblock_list:
+                statetomo_block.append(pulse)
+            for pulse in opersblock_list:
+                statetomo_block.append(pulse)
+            for pulse in readout_block:
+                statetomo_block.append(pulse)
+            for laser_trig in laser_block:
+                statetomo_block.append(laser_trig)
+            statetomo_block.append(waiting_element)
+            statetomo_block.append(delay_element)
 
-        for i, pulse in enumerate(initialblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(opersblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(readblock01_list):
-            statetomo_block.append(pulse)
-        for i, laser_trig in enumerate(laser_block):
-            statetomo_block.append(laser_trig)
-        statetomo_block.append(waiting_element)
-        statetomo_block.append(delay_element)
 
-        for i, pulse in enumerate(initialblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(opersblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(readblock10_list):
-            statetomo_block.append(pulse)
-        for i, laser_trig in enumerate(laser_block):
-            statetomo_block.append(laser_trig)
-        statetomo_block.append(waiting_element)
-        statetomo_block.append(delay_element)
-
-        for i, pulse in enumerate(initialblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(opersblock_list):
-            statetomo_block.append(pulse)
-        for i, pulse in enumerate(readblock11_list):
-            statetomo_block.append(pulse)
-        for i, laser_trig in enumerate(laser_block):
-            statetomo_block.append(laser_trig)
-        statetomo_block.append(waiting_element)
-        statetomo_block.append(delay_element)
-
+        # get tau array for measurement ticks
+        tau_array = (0) + np.arange(4) * (1)
 
         created_blocks.append(statetomo_block)
         # Create block ensemble
-
         block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
         block_ensemble.append((statetomo_block.name, 0))
 
@@ -22664,7 +21992,7 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
         block_ensemble.measurement_information['units'] = ('s', '')
         block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
         block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
-            ensemble=block_ensemble, created_blocks=created_blocks)
+                ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
         created_ensembles.append(block_ensemble)
