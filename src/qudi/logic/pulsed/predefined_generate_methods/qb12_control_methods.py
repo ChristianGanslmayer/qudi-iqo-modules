@@ -69,9 +69,7 @@ class xq1iGate(PredefinedGeneratorBase):
                     #                                         amps=[QCQB12_params['RF_amp0'], QCQB12_params['RF_amp1']],
                     #                                         freqs=[QCQB12_params['RF_freq0'], QCQB12_params['RF_freq1']],
                     #                                         phases=[accumRotZAng, accumRotZAng]) ]
-                    pulse = ( self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=1, rot_phase=accumRotZAng) +
-                              self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=2*QCQB12_params['DD_N']+1,
-                                                     rot_phase=accumRotZAng) )
+                    pulse = self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=1, rot_phase=accumRotZAng)
             case 'c0x':
                 if self.qubit == 1:
                     pulse = [ self._get_mw_element(length=QCQB12_params['NV_Cpi_len'],
@@ -80,24 +78,24 @@ class xq1iGate(PredefinedGeneratorBase):
                                                    freq=QCQB12_params['NV_Cpi_freq1'],
                                                    phase=accumRotZAng) ]
                 elif self.qubit == 2:
-                    # pulse = [ self._get_rf_element(length=QCQB12_params['RF_pi'],
-                    #                                increment=0,
-                    #                                amp=QCQB12_params['RF_amp0'],
-                    #                                freq=QCQB12_params['RF_freq0'],
-                    #                                phase=accumRotZAng) ]
-                    pulse = ( self._ddrf_pulse_block(QCQB12_params, type='c0', tau_count=1, rot_phase=accumRotZAng) +
-                              self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=2*QCQB12_params['DD_N']+1,
-                                                     rot_phase=accumRotZAng) )
+                    pulse = [ self._get_rf_element(length=QCQB12_params['RF_pi'],
+                                                   increment=0,
+                                                   amp=QCQB12_params['RF_amp0'],
+                                                   freq=QCQB12_params['RF_freq0'],
+                                                   phase=accumRotZAng) ]
+                    # pulse = ( self._ddrf_pulse_block(QCQB12_params, type='c0', tau_count=1, rot_phase=accumRotZAng) +
+                              # self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=2*QCQB12_params['DD_N']+1,
+                                                     # rot_phase=accumRotZAng) )
             case 'c1x':
                 if self.qubit == 2:
-                    # pulse = [ self._get_rf_element(length=QCQB12_params['RF_pi'],
-                    #                                increment=0,
-                    #                                amp=QCQB12_params['RF_amp1'],
-                    #                                freq=QCQB12_params['RF_freq1'],
-                    #                                phase=accumRotZAng) ]
-                    pulse = ( self._ddrf_pulse_block(QCQB12_params, type='c1', tau_count=1, rot_phase=accumRotZAng) +
-                              self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=2*QCQB12_params['DD_N']+1,
-                                                     rot_phase=accumRotZAng) )
+                    pulse = [ self._get_rf_element(length=QCQB12_params['RF_pi'],
+                                                   increment=0,
+                                                   amp=QCQB12_params['RF_amp1'],
+                                                   freq=QCQB12_params['RF_freq1'],
+                                                   phase=accumRotZAng) ]
+                    # pulse = ( self._ddrf_pulse_block(QCQB12_params, type='c1', tau_count=1, rot_phase=accumRotZAng) +
+                              # self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=2*QCQB12_params['DD_N']+1,
+                                                     # rot_phase=accumRotZAng) )
         return pulse
 
 
@@ -214,6 +212,7 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
                 break
 
         gate_noop = xq1iGate(self._sgl, name='noop', param=0.0e-9)
+        gate_c0q1x = xq1iGate(self._sgl, name="c0x", qubit=1)
         gate_c0q2x = xq1iGate(self._sgl, name="c0x", qubit=2)
         gate_c1q2x = xq1iGate(self._sgl, name="c1x", qubit=2)
         gate_q1sx = xq1iGate(self._sgl, name="sx", qubit=1)
@@ -235,9 +234,9 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
             case '01':
                 initialblock_list += gate_c0q2x.get_pulse(QCQB12_params)
             case '10':
-                initialblock_list += 2*gate_q1sx.get_pulse(QCQB12_params)
+                initialblock_list += gate_q1sx.get_pulse(QCQB12_params) + gate_q1sx.get_pulse(QCQB12_params)
             case '11':
-                initialblock_list += 2*gate_q1sx.get_pulse(QCQB12_params) + gate_c1q2x.get_pulse(QCQB12_params)
+                initialblock_list += gate_q1sx.get_pulse(QCQB12_params) + gate_q1sx.get_pulse(QCQB12_params) + gate_c1q2x.get_pulse(QCQB12_params)
 
         # create blocks for executing circuit operations
         opersblock_list=[]
@@ -253,8 +252,8 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
                                    self._get_idle_element(length=laser_off, increment=0) ]
         readblock00_list = gate_noop.get_pulse(QCQB12_params)
         readblock01_list = gate_c0q2x.get_pulse(QCQB12_params)
-        readblock10_list = 2*gate_q1sx.get_pulse(QCQB12_params)
-        readblock11_list = gate_c1q2x.get_pulse(QCQB12_params) + 2*gate_q1sx.get_pulse(QCQB12_params)
+        readblock10_list = gate_c0q1x.get_pulse(QCQB12_params)
+        readblock11_list = gate_c1q2x.get_pulse(QCQB12_params) + gate_c0q1x.get_pulse(QCQB12_params)
 
         # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
         statetomo_block = PulseBlock(name=name)

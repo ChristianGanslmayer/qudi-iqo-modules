@@ -8,17 +8,17 @@ from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import T
 
 class xq1i:
     name='NV_011'
-    res_freq = 1.448466e9
-    RF_freq0 = 5.096e6
-    RF_freq1 = 2.936e6
+    res_freq = 1.4482e9
+    RF_freq0 = 5.0949e6
+    RF_freq1 = 2.9376e6
     microwave_amplitude_LowPower = 0.001
     microwave_amplitude_HighPower = 0.1
-    rabi_period_LowPower = 1923.0e-09
+    rabi_period_LowPower = 2.0e-6
     rabi_period_HighPower = 33.0e-09
     nucrabi_RFfreq0_amp = 0.02
     nucrabi_RFfreq1_amp = 0.025
-    nucrabi_RFfreq0_period = 40e-06
-    nucrabi_RFfreq1_period = 40e-06
+    nucrabi_RFfreq0_period = 72.46e-6
+    nucrabi_RFfreq1_period = 73.53e-6
 
 
     def __init__(self, pulsed_master_logic, pulsed_measurement_logic, sequence_generator_logic):
@@ -95,10 +95,10 @@ class xq1i:
         self.DDrfspect_params['name'] = 'ddrf_spect'
         self.DDrfspect_params['freq'] = 5.096e6
         self.DDrfspect_params['RF_freq'] =2.56e6
-        self.DDrfspect_params['RF_amp'] =0.020
-        self.DDrfspect_params['cyclesf'] =9
+        self.DDrfspect_params['RF_amp'] =0.025
+        self.DDrfspect_params['cyclesf'] =7
         self.DDrfspect_params['rot_phase'] = 0
-        self.DDrfspect_params['DD_order'] = 8
+        self.DDrfspect_params['DD_order'] = 6
         self.DDrfspect_params['num_of_points'] = 10
         self.DDrfspect_params['laser_on'] = 20.0e-9
         self.DDrfspect_params['laser_off'] = 60.0e-9
@@ -106,11 +106,11 @@ class xq1i:
 
         self.QCQB12_params  = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB12']
         self.QCQB12_params['name'] = 'quantumcircuitQB12'
-        self.QCQB12_params['NV_Cpi_amp'] = 0.005
+        self.QCQB12_params['NV_Cpi_amp'] = 0.001
         self.QCQB12_params['RF_amp0'] = self.nucrabi_RFfreq0_amp
         self.QCQB12_params['RF_amp1'] = self.nucrabi_RFfreq1_amp
         self.QCQB12_params['cyclesf'] = 7
-        self.QCQB12_params['DD_N'] = 2
+        self.QCQB12_params['DD_N'] = 3
         self.QCQB12_params['laser_on'] = 20.0e-9
         self.QCQB12_params['laser_off'] = 60.0e-9
         self.QCQB12_sweeps = 600
@@ -281,7 +281,7 @@ class xq1i:
         self.QCQB12_params['RF_freq1'] = self.RF_freq1
         self.QCQB12_params['RF_pi'] = (self.nucrabi_RFfreq0_period + self.nucrabi_RFfreq1_period)/4
         self.QCQB12_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB12])
-        print(self.QCQB12_params['gate_operations'])
+        #print(self.QCQB12_params['gate_operations'])
         self.sequence_generator_logic.delete_ensemble('quantumcircuitQB12')
         self.sequence_generator_logic.delete_block('quantumcircuitQB12')
         self.pulsed_master_logic.generate_predefined_sequence('QuantumCircuitQB12', self.QCQB12_params)
