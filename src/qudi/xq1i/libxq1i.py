@@ -6,7 +6,11 @@ import os
 import json
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import xq1iGate
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates
-    
+
+
+def covertNetrefToNumpyArray(data):
+    return np.array([float(_) for _ in data])
+
 
 class xq1i:
     POI_name = 'NV_011'
@@ -317,3 +321,6 @@ class xq1i:
 
     def gate(self, name, qubit=0, param=0):
         return xq1iGate(self.sequence_generator_logic, name=name, qubit=qubit, param=param)
+
+    def getPopulationFromCounts(self, counts):
+        return (counts - (self.calib_params['rabi_offset']-self.calib_params['rabi_amplitude'])) / (2*self.calib_params['rabi_amplitude'])
