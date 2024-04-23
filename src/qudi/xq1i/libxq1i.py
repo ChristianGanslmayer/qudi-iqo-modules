@@ -311,6 +311,7 @@ class xq1i:
         time.sleep(1)
         self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + '_QCQB12_'
                                                 + '_Initstate_' + self.QCQB12_params['Initial_state'].name
+                                                + '_Readstate_' + self.QCQB12_params['Readout_state'].name + '_'
                                                 + '_'.join([f"{gate.name}QB{gate.qubit}" for gate in qcQB12]),
                                                 with_error=True)
 

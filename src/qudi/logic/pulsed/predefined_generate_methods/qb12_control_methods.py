@@ -301,6 +301,8 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         #     statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
 
         # readout of the population of a single state Readout_state (population transfer to 00 and subsequent Rabi driving)
+        if Readout_state.value in (TQstates.State00.value, TQstates.State10.value):
+            statetomo_block.append( self._get_idle_element(length=QCQB12_params['RF_pi'], increment=0) )
         for pulse in initialblock_list:
             statetomo_block.append(pulse)
         for pulse in opersblock_list:
@@ -323,7 +325,7 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         created_sequences = list()
         created_blocks.append(statetomo_block)
         block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
-        block_ensemble.append((statetomo_block.name, 0))
+        block_ensemble.append((statetomo_block.name, num_of_points-1))
 
         # Create and append sync trigger block if needed
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
