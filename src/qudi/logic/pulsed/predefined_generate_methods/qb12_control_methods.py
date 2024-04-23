@@ -116,6 +116,7 @@ class xq1iGate(PredefinedGeneratorBase):
                                  0.0,
                                  tau,
                                  0)
+        #print(f'phase: {phase:.3f}')
         MW_elements = {
             'MWpix': self._get_mw_element(length=self.rabi_period / 2,
                                           increment=0,
@@ -129,6 +130,7 @@ class xq1iGate(PredefinedGeneratorBase):
                                           phase=90)
         }
         pulse_block = []
+        #for n in range(1, order + 1):
         for n in range(1, QCQB12_params['DD_N']+1):
             if n != 1:
                 del pulse_block[len(pulse_block) - 3:len(pulse_block)]
@@ -136,7 +138,8 @@ class xq1iGate(PredefinedGeneratorBase):
             else:
                 numTau = 1
             #k=1,4,7,10
-            RF_phase = np.mod( (tau_count-1)*phase + phaseOffsets[n%2] + rot_phase, 360 )
+            RF_phase = np.mod( (tau_count-1)*phase + phaseOffsets[tau_count%2] + rot_phase, 360 )
+            #print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
             tauidle_element = self._get_idle_element(length=numTau*tau_idle, increment=0)
             RFtau_element = self._get_rf_element(length=numTau*tau_pulse,
                                                  increment=0,
@@ -150,7 +153,8 @@ class xq1iGate(PredefinedGeneratorBase):
             pulse_block.append(MW_elements['MWpi'+rotAx])
             tau_count += 1
             #k=2,5,8,11
-            RF_phase = np.mod( (tau_count-1)*phase + phaseOffsets[n%2] + rot_phase, 360 )
+            RF_phase = np.mod( (tau_count-1)*phase + phaseOffsets[tau_count%2] + rot_phase, 360 )
+            #print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
             tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
             RFtau_element = self._get_rf_element(length=2*tau_pulse,
                                                  increment=0,
@@ -164,7 +168,8 @@ class xq1iGate(PredefinedGeneratorBase):
             pulse_block.append(MW_elements['MWpi'+rotAx])
             tau_count += 1
             #k=3,6,9,12
-            RF_phase = np.mod( (tau_count - 1)*phase + phaseOffsets[n%2] + rot_phase, 360 )
+            RF_phase = np.mod( (tau_count - 1)*phase + phaseOffsets[tau_count%2] + rot_phase, 360 )
+            #print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
             tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
             RFtau_element = self._get_rf_element(length=tau_pulse,
                                                  increment=0,
@@ -193,6 +198,7 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         super().__init__(*args, **kwargs)
         self._sgl = args[0]
 
+
     ################################################################################################
     #                             Generation methods for waveforms                                 #
     ################################################################################################
@@ -216,6 +222,7 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         gate_c0q2x = xq1iGate(self._sgl, name="c0x", qubit=2)
         gate_c1q2x = xq1iGate(self._sgl, name="c1x", qubit=2)
         gate_q1sx = xq1iGate(self._sgl, name="sx", qubit=1)
+        #gate_q2sx = xq1iGate(self._sgl, name="sx", qubit=2)
 
         gate_list = []
         regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
@@ -257,6 +264,23 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
 
         # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
         statetomo_block = PulseBlock(name=name)
+        # ddrf_orderscan sequence for testing/debugging the _ddrf_pulse_block function
+        # num_points = 30
+        # for n in range(1, num_points+1):
+        #     pulse_block = []
+        #     # pulse_block = [self._get_idle_element(length=self.rabi_period/2, increment=0)]
+        #     # pulse_block = gate_q1sx.get_pulse(QCQB12_params)
+        #     # pulse_block += gate_q1sx.get_pulse(QCQB12_params)
+        #     pulse_block += gate_q2sx.get_pulse(QCQB12_params, order=n)
+        #     # pulse_block += [self._get_idle_element(length=self.rabi_period / 2, increment=0)]
+        #     # pulse_block += gate_q1sx.get_pulse(QCQB12_params)
+        #     # pulse_block += gate_q1sx.get_pulse(QCQB12_params)
+        #     for pulse in pulse_block:
+        #         statetomo_block.append(pulse)
+        #     for laser_trig in laser_block:
+        #         statetomo_block.append(laser_trig)
+        #     statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
+        #     statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
         for readout_block in [readblock00_list, readblock01_list, readblock10_list, readblock11_list]:
             for pulse in initialblock_list:
                 statetomo_block.append(pulse)
@@ -281,7 +305,8 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # get tau array for measurement ticks
-        tau_array = (0) + np.arange(4) * (1)
+        #tau_array =  np.arange(1,num_points+1)
+        tau_array =  np.arange(4)
         # add metadata to invoke settings later on
         number_of_lasers = 4
         block_ensemble.measurement_information['alternating'] = False

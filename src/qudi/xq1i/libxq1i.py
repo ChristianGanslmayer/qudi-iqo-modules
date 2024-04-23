@@ -23,8 +23,8 @@ class xq1i:
 
         self.calib_params = OrderedDict()
         self.calib_params['res_freq'] = 1.4482e9
-        self.calib_params['RF_freq0'] = 5.0949e6
-        self.calib_params['RF_freq1'] = 2.9376e6
+        self.calib_params['RF_freq0'] = 5.0962e6
+        self.calib_params['RF_freq1'] = 2.9256e6
         self.calib_params['rabi_period_LowPower'] = 2.0e-6
         self.calib_params['rabi_period_HighPower'] = 33.0e-09
         self.calib_params['rabi_offset'] = 1.181
@@ -117,7 +117,7 @@ class xq1i:
         self.QCQB12_params['RF_amp0'] = self.nucrabi_RFfreq0_amp
         self.QCQB12_params['RF_amp1'] = self.nucrabi_RFfreq1_amp
         self.QCQB12_params['cyclesf'] = 7
-        self.QCQB12_params['DD_N'] = 3
+        self.QCQB12_params['DD_N'] = 8
         self.QCQB12_params['laser_on'] = 20.0e-9
         self.QCQB12_params['laser_off'] = 60.0e-9
         self.QCQB12_sweeps = 600
