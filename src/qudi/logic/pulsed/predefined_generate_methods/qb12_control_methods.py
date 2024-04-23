@@ -203,11 +203,13 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
     #                             Generation methods for waveforms                                 #
     ################################################################################################
 
-    def generate_QuantumCircuitQB12(self, name='quantumcircuitQB12', Initial_state=TQstates.State00,
+    def generate_QuantumCircuitQB12(self, name='quantumcircuitQB12',
+                                    Initial_state=TQstates.State00, Readout_state=TQstates.State00,
                                     NV_Cpi_len=1.0e-6, NV_Cpi_amp=0.05, NV_Cpi_freq1=1.432e9,
                                     RF_freq0=5.1e6, RF_amp0=0.02,  RF_freq1=5.1e6, RF_amp1=0.02,
                                     cyclesf=9, DD_N=2, RF_pi=20.0e-6,
                                     gate_operations = "sx(0)[1], rz(90)[2], sx(0)[2]",
+                                    num_of_points=50,
                                     laser_on=20.0e-9, laser_off=60.0e-9):
         """
 
@@ -257,13 +259,16 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         laser_reps = int(self.laser_length / (laser_on + laser_off))
         laser_block = laser_reps*[ self._get_laser_element(length=laser_on, increment=0),
                                    self._get_idle_element(length=laser_off, increment=0) ]
-        readblock00_list = gate_noop.get_pulse(QCQB12_params)
-        readblock01_list = gate_c0q2x.get_pulse(QCQB12_params)
-        readblock10_list = gate_c0q1x.get_pulse(QCQB12_params)
-        readblock11_list = gate_c1q2x.get_pulse(QCQB12_params) + gate_c0q1x.get_pulse(QCQB12_params)
+        readout_blocks = {
+            TQstates.State00.name : gate_noop.get_pulse(QCQB12_params),
+            TQstates.State01.name : gate_c0q2x.get_pulse(QCQB12_params),
+            TQstates.State10.name : gate_c0q1x.get_pulse(QCQB12_params),
+            TQstates.State11.name : (gate_c1q2x.get_pulse(QCQB12_params) + gate_c0q1x.get_pulse(QCQB12_params))
+        }
 
         # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
         statetomo_block = PulseBlock(name=name)
+
         # ddrf_orderscan sequence for testing/debugging the _ddrf_pulse_block function
         # num_points = 30
         # for n in range(1, num_points+1):
@@ -281,17 +286,36 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         #         statetomo_block.append(laser_trig)
         #     statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
         #     statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
-        for readout_block in [readblock00_list, readblock01_list, readblock10_list, readblock11_list]:
-            for pulse in initialblock_list:
-                statetomo_block.append(pulse)
-            for pulse in opersblock_list:
-                statetomo_block.append(pulse)
-            for pulse in readout_block:
-                statetomo_block.append(pulse)
-            for laser_trig in laser_block:
-                statetomo_block.append(laser_trig)
-            statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
-            statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
+
+        # readout of all 4 populations sequentially
+        # for readout_block in readout_blocks.values():
+        #     for pulse in initialblock_list:
+        #         statetomo_block.append(pulse)
+        #     for pulse in opersblock_list:
+        #         statetomo_block.append(pulse)
+        #     for pulse in readout_block:
+        #         statetomo_block.append(pulse)
+        #     for laser_trig in laser_block:
+        #         statetomo_block.append(laser_trig)
+        #     statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
+        #     statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
+
+        # readout of the population of a single state Readout_state (population transfer to 00 and subsequent Rabi driving)
+        for pulse in initialblock_list:
+            statetomo_block.append(pulse)
+        for pulse in opersblock_list:
+            statetomo_block.append(pulse)
+        for pulse in readout_blocks[Readout_state.name]:
+            statetomo_block.append(pulse)
+        tau_step = QCQB12_params['NV_Cpi_len']/5
+        statetomo_block.append(self._get_mw_element(length=0, increment=tau_step,
+                                                    amp=QCQB12_params['NV_Cpi_amp'], freq=QCQB12_params['NV_Cpi_freq1'],
+                                                    phase=accum_rotZAng[0])
+                               )
+        for laser_trig in laser_block:
+            statetomo_block.append(laser_trig)
+        statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
+        statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
 
         # Create block ensemble
         created_blocks = list()
@@ -306,9 +330,10 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
 
         # get tau array for measurement ticks
         #tau_array =  np.arange(1,num_points+1)
-        tau_array =  np.arange(4)
+        #tau_array =  np.arange(4)
+        tau_array = np.arange(num_of_points) * tau_step
         # add metadata to invoke settings later on
-        number_of_lasers = 4
+        number_of_lasers = num_of_points
         block_ensemble.measurement_information['alternating'] = False
         block_ensemble.measurement_information['laser_ignore_list'] = list()
         block_ensemble.measurement_information['controlled_variable'] = tau_array

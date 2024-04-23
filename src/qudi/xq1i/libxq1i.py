@@ -113,11 +113,12 @@ class xq1i:
 
         self.QCQB12_params  = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB12']
         self.QCQB12_params['name'] = 'quantumcircuitQB12'
-        self.QCQB12_params['NV_Cpi_amp'] = 0.001
+        self.QCQB12_params['NV_Cpi_amp'] = self.microwave_amplitude_LowPower
         self.QCQB12_params['RF_amp0'] = self.nucrabi_RFfreq0_amp
         self.QCQB12_params['RF_amp1'] = self.nucrabi_RFfreq1_amp
         self.QCQB12_params['cyclesf'] = 7
         self.QCQB12_params['DD_N'] = 8
+        self.QCQB12_params['num_of_points'] = 20
         self.QCQB12_params['laser_on'] = 20.0e-9
         self.QCQB12_params['laser_off'] = 60.0e-9
         self.QCQB12_sweeps = 600
