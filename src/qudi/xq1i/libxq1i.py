@@ -1,9 +1,10 @@
-from collections import OrderedDict
-import numpy as np
 import time
 import datetime
 import os
 import json
+from collections import OrderedDict
+import numpy as np
+from scipy import optimize
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import xq1iGate
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates
 
@@ -15,6 +16,7 @@ def covertNetrefToNumpyArray(data):
 class xq1i:
     POI_name = 'NV_011'
     calibParamsFilePrefix = os.path.join('./', 'calib_params', 'calib_params_')
+    measResFilePrefix = os.path.join('./', 'measurement_results', 'run_')
     microwave_amplitude_LowPower = 0.001
     microwave_amplitude_HighPower = 0.1
     nucrabi_RFfreq0_amp = 0.02
@@ -133,6 +135,14 @@ class xq1i:
         json.dump(self.calib_params, file, indent=4)
         file.close()
 
+
+    def saveMeasurementResult(self, data):
+        filename = self.measResFilePrefix + datetime.datetime.now().strftime('%Y%m%d_%H%M') + '.json'
+        file = open(filename, 'w')
+        json.dump(data, file, indent=4)
+        file.close()
+
+
     def loadCalibParams(self):
         newestCalibFile = sorted( os.listdir( os.path.dirname(self.calibParamsFilePrefix) ), reverse=True )[0]
         file = open( os.path.join(os.path.dirname(self.calibParamsFilePrefix), newestCalibFile), 'r' )
@@ -141,6 +151,7 @@ class xq1i:
         print(f"INFO: loaded calibration parameters from file '{newestCalibFile}'")
         if timeStamp + datetime.timedelta(hours=3) < datetime.datetime.now():
             print('\033[91m' + 'WARNING: Most recent calibration data is older than 3 hours. Please recalibrate.' + '\033[0m')
+
 
     # def write_to_logfile(self, nametag, timestamp,name, **kwargs):
         # """ Write parameters to custom logfile with name nametag """
@@ -319,8 +330,27 @@ class xq1i:
                                                 + '_'.join([f"{gate.name}QB{gate.qubit}" for gate in qcQB12]),
                                                 with_error=True)
 
+
     def gate(self, name, qubit=0, param=0):
         return xq1iGate(self.sequence_generator_logic, name=name, qubit=qubit, param=param)
 
+
     def getPopulationFromCounts(self, counts):
         return (counts - (self.calib_params['rabi_offset']-self.calib_params['rabi_amplitude'])) / (2*self.calib_params['rabi_amplitude'])
+
+
+    def getFitFromNormalizedCounts(self, tData, sigData):
+        p0 = [ np.average(sigData), (sigData.max()-sigData.min())/2, 45 ]
+        fit_func = lambda t, *p: p[0] + p[1]*np.cos( 2*np.pi/self.calib_params['rabi_period_LowPower']*t + np.pi*p[2]/180 )
+        fitparams, fitparams_covariance = optimize.curve_fit(fit_func, tData, sigData, p0=p0, maxfev=1000)
+        if fitparams[0] > 0.5:
+            fitparams[0] = 0.5
+        elif fitparams[0] < 0:
+            fitparams[0] = 0
+        if abs(fitparams[1]) > 0.5:
+            fitparams[1] = np.sign(fitparams[1])*0.5
+        if abs(fitparams[1]) > fitparams[0]:
+            fitparams[0] = abs(fitparams[1])
+        tFit = np.linspace(0, tData[-1], 100)
+        sigFit = fit_func(tFit, *fitparams)
+        return tFit,sigFit
