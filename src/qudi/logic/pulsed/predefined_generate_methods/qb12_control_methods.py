@@ -238,13 +238,13 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         # create blocks for initialization
         initialblock_list=[]
         match Initial_state.value:
-            case '00':
+            case TQstates.State00.value:
                 initialblock_list += gate_noop.get_pulse(QCQB12_params)
-            case '01':
+            case TQstates.State01.value:
                 initialblock_list += gate_c0q2x.get_pulse(QCQB12_params)
-            case '10':
+            case TQstates.State10.value:
                 initialblock_list += gate_q1sx.get_pulse(QCQB12_params) + gate_q1sx.get_pulse(QCQB12_params)
-            case '11':
+            case TQstates.State11.value:
                 initialblock_list += gate_q1sx.get_pulse(QCQB12_params) + gate_q1sx.get_pulse(QCQB12_params) + gate_c1q2x.get_pulse(QCQB12_params)
 
         # create blocks for executing circuit operations
@@ -260,10 +260,10 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         laser_block = laser_reps*[ self._get_laser_element(length=laser_on, increment=0),
                                    self._get_idle_element(length=laser_off, increment=0) ]
         readout_blocks = {
-            TQstates.State00.name : gate_noop.get_pulse(QCQB12_params),
-            TQstates.State01.name : gate_c0q2x.get_pulse(QCQB12_params),
-            TQstates.State10.name : gate_c0q1x.get_pulse(QCQB12_params),
-            TQstates.State11.name : (gate_c1q2x.get_pulse(QCQB12_params) + gate_c0q1x.get_pulse(QCQB12_params))
+            TQstates.State00.value : gate_noop.get_pulse(QCQB12_params),
+            TQstates.State01.value : gate_c0q2x.get_pulse(QCQB12_params),
+            TQstates.State10.value : gate_c0q1x.get_pulse(QCQB12_params),
+            TQstates.State11.value : (gate_c1q2x.get_pulse(QCQB12_params) + gate_c0q1x.get_pulse(QCQB12_params))
         }
 
         # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
@@ -307,7 +307,7 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
             statetomo_block.append(pulse)
         for pulse in opersblock_list:
             statetomo_block.append(pulse)
-        for pulse in readout_blocks[Readout_state.name]:
+        for pulse in readout_blocks[Readout_state.value]:
             statetomo_block.append(pulse)
         tau_step = QCQB12_params['NV_Cpi_len']/5
         statetomo_block.append(self._get_mw_element(length=0, increment=tau_step,

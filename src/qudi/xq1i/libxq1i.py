@@ -310,12 +310,14 @@ class xq1i:
                                                 +'_RotPhase_'+ str(self.DDrfspect_params['rot_phase']), with_error=False)
 
 
-    def do_QuantumCircuitQB12(self, qcQB12):
+    def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readState=TQstates.State00):
         self.QCQB12_params['NV_Cpi_len'] = self.calib_params['rabi_period_LowPower']/2
         self.QCQB12_params['NV_Cpi_freq1'] = self.calib_params['res_freq']
         self.QCQB12_params['RF_freq0'] = self.calib_params['RF_freq0']
         self.QCQB12_params['RF_freq1'] = self.calib_params['RF_freq1']
         self.QCQB12_params['RF_pi'] = (self.calib_params['nucrabi_RFfreq0_period'] + self.calib_params['nucrabi_RFfreq1_period'])/4
+        self.QCQB12_params['Initial_state'] = initState
+        self.QCQB12_params['Readout_state'] = readState
         self.QCQB12_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB12])
         #print(self.QCQB12_params['gate_operations'])
         self.sequence_generator_logic.delete_ensemble('quantumcircuitQB12')
@@ -329,6 +331,10 @@ class xq1i:
                                                 + '_Readstate_' + self.QCQB12_params['Readout_state'].name + '_'
                                                 + '_'.join([f"{gate.name}QB{gate.qubit}" for gate in qcQB12]),
                                                 with_error=True)
+        # workaround to prevent exception in yaml-dump of status variables during qudi shutdown
+        # (cannot handle enum type behind an rpyc-netref, exception raised in "represent_undefined" in ruamel/yaml/representer.py)
+        self.QCQB12_params['Initial_state'] = None
+        self.QCQB12_params['Readout_state'] = None
 
 
     def gate(self, name, qubit=0, param=0):
