@@ -19,8 +19,8 @@ class xq1i:
     measResFilePrefix = os.path.join('./', 'measurement_results', 'run_')
     microwave_amplitude_LowPower = 0.001
     microwave_amplitude_HighPower = 0.1
-    nucrabi_RFfreq0_amp = 0.02
-    nucrabi_RFfreq1_amp = 0.025
+    nucrabi_RFfreq0_amp = 0.01
+    nucrabi_RFfreq1_amp = 0.01
 
     def __init__(self, pulsed_master_logic, pulsed_measurement_logic, sequence_generator_logic):
         self.pulsed_master_logic = pulsed_master_logic
@@ -108,10 +108,10 @@ class xq1i:
         self.DDrfspect_params['name'] = 'ddrf_spect'
         self.DDrfspect_params['freq'] = 5.096e6
         self.DDrfspect_params['RF_freq'] =2.56e6
-        self.DDrfspect_params['RF_amp'] =0.025
-        self.DDrfspect_params['cyclesf'] =7
+        self.DDrfspect_params['RF_amp'] =0.020
+        self.DDrfspect_params['cyclesf'] =4
         self.DDrfspect_params['rot_phase'] = 0
-        self.DDrfspect_params['DD_order'] = 6
+        self.DDrfspect_params['DD_order'] = 10
         self.DDrfspect_params['num_of_points'] = 10
         self.DDrfspect_params['laser_on'] = 20.0e-9
         self.DDrfspect_params['laser_off'] = 60.0e-9
@@ -295,7 +295,8 @@ class xq1i:
 
 
     def do_DDrf_Spect(self):
-        self.DDrfspect_params['freq'] = self.calib_params['RF_freq0']
+        #self.DDrfspect_params['freq'] = self.calib_params['RF_freq0']
+        self.DDrfspect_params['freq'] = 544.1e3
         self.sequence_generator_logic.delete_ensemble('ddrf_spect')
         self.sequence_generator_logic.delete_block('ddrf_spect')
         self.pulsed_master_logic.generate_predefined_sequence('DDrf_Spect', self.DDrfspect_params)
