@@ -1877,10 +1877,10 @@ class SequenceGeneratorLogic(LogicBase):
                         # if the rotating frame should be preserved (default) increment the offset
                         # counter for the time array.
                         if ensemble.rotating_frame:
-                            if samples_to_add == (self.__sample_rate *1.5e-6):
-                                offset_bin = 0
-                            else:
-                                offset_bin += samples_to_add
+#                            if samples_to_add == (self.__sample_rate *1.5e-6):
+#                                offset_bin = 0
+#                            else:
+#                                offset_bin += samples_to_add
                             offset_bin += samples_to_add
 
                         # Check if the temporary sample array is full and write to the device if so.

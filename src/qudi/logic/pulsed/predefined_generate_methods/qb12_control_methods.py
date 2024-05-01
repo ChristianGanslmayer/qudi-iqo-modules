@@ -301,8 +301,8 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
         #     statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
 
         # readout of the population of a single state Readout_state (population transfer to 00 and subsequent Rabi driving)
-        #if Readout_state.value in (TQstates.State00.value, TQstates.State10.value):
-        #    statetomo_block.append( self._get_idle_element(length=QCQB12_params['RF_pi'], increment=0) )
+        if Readout_state.value in (TQstates.State00.value, TQstates.State10.value):
+            statetomo_block.append( self._get_idle_element(length=QCQB12_params['RF_pi'], increment=0) )
         for pulse in initialblock_list:
             statetomo_block.append(pulse)
         for pulse in opersblock_list:
