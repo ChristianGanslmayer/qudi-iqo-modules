@@ -313,6 +313,11 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         tau_array = tau_start + np.arange(num_of_points) * tau_step
 
         # create the laser_mw element
+        mwinit_element = self._get_mw_element(length=self.rabi_period/4,
+                                          increment=0,
+                                          amp=self.microwave_amplitude,
+                                          freq=self.microwave_frequency,
+                                          phase=0)
         mw_element = self._get_mw_element(length=tau_start,
                                           increment=tau_step,
                                           amp=self.microwave_amplitude,
@@ -362,6 +367,174 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # Append ensemble to created_ensembles list
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_rabiRFpi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9, laser_on=20.0e-9,
+                      laser_off=60.0e-9, num_of_points=50, RF_freq=5.09685e6, RF_amp=0.02, RF_pi=35.0e-6, delay_time=30.0e-6):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # get tau array for measurement ticks
+        tau_array = tau_start + np.arange(num_of_points) * tau_step
+
+        # create the laser_mw element
+        mw_element = self._get_mw_element(length=tau_start,
+                                          increment=tau_step,
+                                          amp=self.microwave_amplitude,
+                                          freq=self.microwave_frequency,
+                                          phase=0)
+
+        rf_element = self._get_rf_element(length=RF_pi,
+                                          increment=0,
+                                          amp=RF_amp,
+                                          freq=RF_freq,
+                                          phase=0)
+        waiting_element = self._get_idle_element(length=self.wait_time,
+                                                 increment=0)
+        laser_element = self._get_laser_element(length=self.laser_length,
+                                                     increment=0)
+        delay_element = self._get_idle_element(length=self.laser_delay,
+                                                 increment=0)
+        MWdelay_element = self._get_idle_element(length=delay_time,
+                                               increment=0)
+
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
+
+        # Create block and append to created_blocks list
+        rabi_block = PulseBlock(name=name)
+        rabi_block.append(MWdelay_element)
+        rabi_block.append(rf_element)
+        rabi_block.append(mw_element)
+        for i, laser_trig in enumerate(laser_block):
+            rabi_block.append(laser_trig)
+
+        rabi_block.append(delay_element)
+        rabi_block.append(waiting_element)
+        created_blocks.append(rabi_block)
+
+        # Create block ensemble
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble.append((rabi_block.name, num_of_points - 1))
+
+        # Create and append sync trigger block if needed
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # add metadata to invoke settings later on
+        block_ensemble.measurement_information['alternating'] = False
+        block_ensemble.measurement_information['laser_ignore_list'] = list()
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
+        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # Append ensemble to created_ensembles list
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_DEERNVNV(self, name='DEERNVNV', NV2_freq=2870.0e6, NV2_amp=0.001, NV2_rabiperiod=20.0e-9, tau_fixed=200.0e-9,
+                      tau_start = 0.0e-9, tau_step=10.0e-9, num_of_taus=50, alternating=False):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # Create frequency array
+        tau_array = tau_start + np.arange(num_of_taus) * tau_step
+
+        # create the elements
+        waiting_element = self._get_idle_element(length=self.wait_time,
+                                                 increment=0)
+        laser_element = self._get_laser_gate_element(length=self.laser_length,
+                                                     increment=0)
+        delay_element = self._get_delay_gate_element()
+
+        # Create block and append to created_blocks list
+        deer_block = PulseBlock(name=name)
+        pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
+                                          increment=0,
+                                          amp=self.microwave_amplitude,
+                                          freq=self.microwave_frequency,
+                                          phase=0)
+        pi3half_element = self._get_mw_element(length=self.rabi_period / 4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=180)
+        pi_element = self._get_mw_element(length=self.rabi_period / 2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=0)
+        mw_element = self._get_mw_element(length=NV2_rabiperiod/2,
+                                          increment=0,
+                                          amp=NV2_amp,
+                                          freq=NV2_freq,
+                                          phase=0)
+
+        tau1_element = self._get_idle_element(length=tau_fixed + (NV2_rabiperiod/2),
+                                                 increment=0)
+        tau2_element = self._get_idle_element(length=tau_start,
+                                             increment=tau_step)
+        tau3_element = self._get_idle_element(length=tau_fixed - tau_start,
+                                              increment=-tau_step)
+
+
+
+
+        deer_block.append(pihalf_element)
+        deer_block.append(tau1_element)
+        deer_block.append(pi_element)
+        deer_block.append(tau3_element)
+        deer_block.append(mw_element)
+        deer_block.append(tau2_element)
+        deer_block.append(pihalf_element)
+        deer_block.append(laser_element)
+        deer_block.append(waiting_element)
+
+        if alternating:
+            deer_block.append(pihalf_element)
+            deer_block.append(tau1_element)
+            deer_block.append(pi_element)
+            deer_block.append(tau3_element)
+            deer_block.append(mw_element)
+            deer_block.append(tau2_element)
+            deer_block.append(pi3half_element)
+            deer_block.append(laser_element)
+            deer_block.append(waiting_element)
+
+        created_blocks.append(deer_block)
+
+        # Create block ensemble
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((deer_block.name, num_of_taus - 1))
+
+        # Create and append sync trigger block if needed
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # add metadata to invoke settings later on
+        number_of_lasers = 2 * num_of_taus if alternating else num_of_taus
+        block_ensemble.measurement_information['alternating'] = alternating
+        block_ensemble.measurement_information['laser_ignore_list'] = list()
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('Hz', '')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
@@ -7901,8 +8074,8 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_DDrf_Orderscan(self, name='ddrf_orderscan',NV_ms1=True, hypf=2.16e6, RF_freq=2.56e6, RF_amp=0.02, cyclesf=10, rot_phase=0,
-                            num_of_points=50, incl_pi_len = False, cond_gate=True, RF_erf=True, rise_time=50.0e-9, chirp=False, bandwidth=5.0e3,
-                            test_mode=True, laser_on=20.0e-9, laser_off=60.0e-9):
+                            num_of_points=50, incl_pi_len = False, cond_gate=True, RF_erf=True, rise_time=50.0e-9, Init_pihalf=True,
+                                Init_phase=90, Read_phase=90, laser_on=20.0e-9, laser_off=60.0e-9):
         """
 
         """
@@ -7924,44 +8097,19 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
             laser_block.append(self._get_idle_element(length=laser_off, increment=0))
         delay_element = self._get_idle_element(length=self.laser_delay, increment=0)
 
-        if test_mode:
-            freqs = [self.microwave_frequency, hypf]
-            amps = [self.microwave_amplitude, 0.02]
-            phasesx = [0,0]
-            phasesy = [90, 0]
 
-            MWpix_element = self._get_multiple_mw_element(length=self.rabi_period / 2,
-                                               increment=0,
-                                               amps=amps,
-                                               freqs=freqs,
-                                               phases=phasesx)
+        MWpix_element = self._get_mw_element(length=self.rabi_period / 2,
+                                             increment=0,
+                                             amp=self.microwave_amplitude,
+                                             freq=self.microwave_frequency,
+                                             phase=0)
+        MWpiy_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=90)
 
-            MWpiy_element = self._get_multiple_mw_element(length=self.rabi_period / 2,
-                                               increment=0,
-                                               amps=amps,
-                                               freqs=freqs,
-                                               phases=phasesy)
-
-            MWidle_element = self._get_mw_element(length=self.rabi_period / 2,
-                                                   increment=0,
-                                                   amp=0.02,
-                                                   freq=hypf,
-                                                   phase=0)
-
-
-        else:
-            MWpix_element = self._get_mw_element(length=self.rabi_period / 2,
-                                                 increment=0,
-                                                 amp=self.microwave_amplitude,
-                                                 freq=self.microwave_frequency,
-                                                 phase=0)
-            MWpiy_element = self._get_mw_element(length=self.rabi_period / 2,
-                                               increment=0,
-                                               amp=self.microwave_amplitude,
-                                               freq=self.microwave_frequency,
-                                               phase=90)
-
-            MWidle_element = self._get_idle_element(length=self.rabi_period / 2, increment=0)
+        MWidle_element = self._get_idle_element(length=self.rabi_period / 2, increment=0)
 
 
         # Create block and append to created_blocks list
@@ -7984,15 +8132,13 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                      0.0,
                                      tau,
                                      0.0)
+        print(f'phase: {phase:.3f}')
         for n in range(1, num_of_points+1):
             if n%4==1:
                 if n!=1:
                     del pulse_block[len(pulse_block)-3:len(pulse_block)]
                     tot_tau = tot_tau - tau
-
                     #k=1
-
-
                     if tau_count % 2 != 0:
                         if cond_gate:
                             RF_phase = np.mod(((tau_count-1)*phase) + 180 +rot_phase, 360)
@@ -8000,16 +8146,10 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                             RF_phase = np.mod(((tau_count-1)*phase) +rot_phase , 360)
                     else:
                         RF_phase = np.mod(((tau_count-1)*phase)+rot_phase , 360)
-
+                    print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
                     #print(n, tau_count, phase, RF_phase)
-                    if test_mode:
-                        tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                               increment=0,
-                                                               amp=0.02,
-                                                               freq=hypf,
-                                                               phase=0)
-                    else:
-                        tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+
+                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                     if RF_erf:
                         RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                                 increment=0,
@@ -8017,13 +8157,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                                 freq=RF_freq,
                                                                 phase=RF_phase,
                                                                 rise_time=rise_time)
-                    elif chirp:
-                        RFtau_element = self._get_rf_element_linearchirp(length=2*tau_pulse,
-                                                            increment=0,
-                                                            amp=RF_amp,
-                                                            start_freq=RF_freq - bandwidth,
-                                                            stop_freq=RF_freq + bandwidth,
-                                                            phase=RF_phase)
+
                     else:
                         RFtau_element = self._get_rf_element(length=2*tau_pulse,
                                                              increment=0,
@@ -8038,9 +8172,6 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                     tot_tau = tot_tau + (2*tau)
 
                 else:
-
-
-
                     if tau_count % 2 != 0:
                         if cond_gate:
                             RF_phase = np.mod(((tau_count-1)*phase) + 180+rot_phase, 360)
@@ -8049,15 +8180,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                     else:
                         RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                    #print(n, tau_count, phase, RF_phase)
-                    if test_mode:
-                        tauidle_element = self._get_rf_element(length=tau_idle,
-                                                               increment=0,
-                                                               amp=0.02,
-                                                               freq=hypf,
-                                                               phase=0)
-                    else:
-                        tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
+                    print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                    tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
                     if RF_erf:
                         RFtau_element = self._get_rfErf_element(length=tau_pulse,
                                                              increment=0,
@@ -8065,13 +8190,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                              freq=RF_freq,
                                                              phase=RF_phase,
                                                              rise_time=rise_time)
-                    elif chirp:
-                        RFtau_element = self._get_rf_element_linearchirp(length=tau_pulse,
-                                                                         increment=0,
-                                                                         amp=RF_amp,
-                                                                         start_freq=RF_freq - bandwidth,
-                                                                         stop_freq=RF_freq + bandwidth,
-                                                                         phase=RF_phase)
+
                     else:
                         RFtau_element = self._get_rf_element(length=tau_pulse,
                                                              increment=0,
@@ -8100,15 +8219,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                             increment=0,
@@ -8116,13 +8229,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=2 * tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
@@ -8151,15 +8258,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=tau_pulse,
                                                             increment=0,
@@ -8167,13 +8268,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=tau_pulse,
                                                          increment=0,
@@ -8191,8 +8286,6 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 del pulse_block[len(pulse_block)-3:len(pulse_block)]
                 tot_tau = tot_tau - tau
                 #k=4
-
-
                 if tau_count % 2 != 0:
                     if cond_gate:
                         RF_phase = np.mod(((tau_count-1)*phase) + 180+rot_phase, 360)
@@ -8201,15 +8294,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                             increment=0,
@@ -8217,13 +8304,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=2 * tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
@@ -8252,15 +8333,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                             increment=0,
@@ -8268,13 +8343,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=2 * tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
@@ -8303,15 +8372,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=tau_pulse,
                                                             increment=0,
@@ -8319,13 +8382,6 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
                 else:
                     RFtau_element = self._get_rf_element(length=tau_pulse,
                                                          increment=0,
@@ -8353,15 +8409,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                             increment=0,
@@ -8369,13 +8419,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=2 * tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
@@ -8403,15 +8447,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                             increment=0,
@@ -8419,13 +8457,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=2 * tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
@@ -8454,15 +8486,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=tau_pulse,
                                                             increment=0,
@@ -8470,13 +8496,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length= tau_pulse,
                                                          increment=0,
@@ -8504,16 +8524,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
 
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                             increment=0,
@@ -8521,13 +8534,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=2 * tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
@@ -8555,15 +8562,9 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=2*tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
+
+                tauidle_element = self._get_idle_element(length=2*tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=2*tau_pulse,
                                                             increment=0,
@@ -8571,13 +8572,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=2 * tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=2 * tau_pulse,
                                                          increment=0,
@@ -8605,16 +8600,10 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 else:
                     RF_phase = np.mod(((tau_count-1)*phase)+rot_phase, 360)
 
-                #print(n, tau_count, phase, RF_phase)
+                print(f'tau_count: {tau_count}, RF_phase: {RF_phase:.3f}')
 
-                if test_mode:
-                    tauidle_element = self._get_rf_element(length=tau_idle,
-                                                           increment=0,
-                                                           amp=0.02,
-                                                           freq=hypf,
-                                                           phase=0)
-                else:
-                    tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
+
+                tauidle_element = self._get_idle_element(length=tau_idle, increment=0)
                 if RF_erf:
                     RFtau_element = self._get_rfErf_element(length=tau_pulse,
                                                             increment=0,
@@ -8622,13 +8611,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             freq=RF_freq,
                                                             phase=RF_phase,
                                                             rise_time=rise_time)
-                elif chirp:
-                    RFtau_element = self._get_rf_element_linearchirp(length=tau_pulse,
-                                                                     increment=0,
-                                                                     amp=RF_amp,
-                                                                     start_freq=RF_freq - bandwidth,
-                                                                     stop_freq=RF_freq + bandwidth,
-                                                                     phase=RF_phase)
+
                 else:
                     RFtau_element = self._get_rf_element(length=tau_pulse,
                                                          increment=0,
@@ -8646,8 +8629,20 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 dpnucgate_block.append(MWpix_element)
             else:
                 dpnucgate_block.append(MWidle_element)
+            if Init_pihalf:
+                dpnucgate_block.append(self._get_mw_element(length=self.rabi_period / 4,
+                                             increment=0,
+                                             amp=self.microwave_amplitude,
+                                             freq=self.microwave_frequency,
+                                             phase=Init_phase))
             for i, pulse in enumerate(pulse_block):
                 dpnucgate_block.append(pulse)
+            if Init_pihalf:
+                dpnucgate_block.append(self._get_mw_element(length=self.rabi_period / 4,
+                                             increment=0,
+                                             amp=self.microwave_amplitude,
+                                             freq=self.microwave_frequency,
+                                             phase=Read_phase))
             if NV_ms1:
                 dpnucgate_block.append(MWpix_element)
             else:
