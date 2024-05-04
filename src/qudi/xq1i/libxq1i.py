@@ -135,6 +135,7 @@ class xq1i:
         file = open(filename, 'w')
         json.dump(self.calib_params, file, indent=4)
         file.close()
+        print(f"INFO: saved updated calibration parameters to file '{os.path.basename(filename)}'")
 
 
     def saveMeasurementResult(self, data):
@@ -151,7 +152,8 @@ class xq1i:
         timeStamp = datetime.datetime.strptime( newestCalibFile,  os.path.basename(xq1i.calibParamsFilePrefix) + '%Y%m%d_%H%M' + '.json' )
         print(f"INFO: loaded calibration parameters from file '{newestCalibFile}'")
         if timeStamp + datetime.timedelta(hours=3) < datetime.datetime.now():
-            print('\033[91m' + 'WARNING: Most recent calibration data is older than 3 hours. Please recalibrate.' + '\033[0m')
+            print('\033[91m' + ('WARNING: Most recent calibration data is older than 3 hours. ' +
+                                'Please refer to the manual for recommended calibration intervals.') + '\033[0m')
 
 
     # def write_to_logfile(self, nametag, timestamp,name, **kwargs):
@@ -181,95 +183,107 @@ class xq1i:
         # return
 
     def qb1_calibration(self):
-        # Measure Qubit-1 transition frequency#
-        res_freq = 1.448466e9
-        self.generate_params['microwave_frequency'] = res_freq
-        self.pulsedODMR_params['freq_start'] = res_freq - 5.0e6
-        self.pulsedODMR_params['freq_step'] = 0.1e6
-        self.pulsedODMR_sweeps = 80000
-        self.do_pulsedODMR()
-        time.sleep(2)
-        result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
-        self.calib_params['res_freq'] = float(result_dict.params['center'].value)
-        time.sleep(2)
-
-        # Measure Qubit-1 gate parameters#
-        self.rabi_sweeps = 80000
-        self.do_rabi(isSlow=False)  # perform fast Rabi
-        result_dict = self.pulsed_measurement_logic.do_fit('Sine')
-        self.calib_params['rabi_period_HighPower'] = float(1 / (result_dict.params['frequency'].value))
-        self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
-        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
-        # xq1i.pulsed_measurement_logic.do_fit('No Fit')
-        time.sleep(2)
-
-        # calibration of CnNOTe (if nuclear spin in state 0, electron spin is flipped)#
-        xq1i.rabi_sweeps = 80000
-        xq1i.do_rabi(isSlow=True)  # perform slow Rabi
-        result_dict = self.pulsed_measurement_logic.do_fit('Sine')
-        self.calib_params['rabi_period_LowPower'] = float(1 / (result_dict.params['frequency'].value))
-        self.calib_params['rabi_offset'] = float(result_dict.params['offset'].value)
-        self.calib_params['rabi_amplitude'] = abs(float(result_dict.params['amplitude'].value))
-        self.saveCalibParams()
-        time.sleep(2)
-
-
-    def qb2_calibration(self):
-        # Measure Qubit-2 transition frequency m_s=0#
-        self.nucspect_params['NV_pi'] = False
-        self.nucspect_params['freq_start'] = 5.05e6
-        self.nucspect_sweeps = 80000
-        self.do_Nucspect()
-        time.sleep(2)
-        result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
-        self.calib_params['RF_freq0'] = float(result_dict.params['center'].value)
-
-        # Measure Qubit-2 gate parameters m_s=0#
-        self.nucrabi_params['NV_pi'] = False
-        self.nucrabi_sweeps = 80000
-        self.do_NucRabi()
-        result_dict = self.pulsed_measurement_logic.do_fit('Sine')
-        self.calib_params['nucrabi_RFfreq0_period'] = float(1 / (result_dict.params['frequency'].value))
-
-        # Measure Qubit-2 transition frequency m_s=1#
-        self.nucspect_params['NV_pi'] = True
-        self.nucspect_params['freq_start'] = 2.90e6
-        self.nucspect_sweeps = 80000
-        self.do_Nucspect()
-        time.sleep(2)
-        result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
-        self.calib_params['RF_freq1'] = float(result_dict.params['center'].value)
-
-        # Measure Qubit-2 gate parameters m_s=1#
-        self.nucrabi_params['NV_pi'] = True
-        self.nucrabi_sweeps = 80000
-        self.do_NucRabi()
-        result_dict = self.pulsed_measurement_logic.do_fit('Sine')
-        self.calib_params['nucrabi_RFfreq1_period'] = float(1 / (result_dict.params['frequency'].value))
-
-        # DDRF transition frequency measurement
-        outfile = open("./14N_Calibration/DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq']), "w")
-        DDRFamplist = []
-        freqls = np.arange(170e3, 250e3, 2e3).tolist()
-        for freq in freqls:
-            self.DDrfspect_params['RF_freq'] = freq
-            self.DDrfspect_sweeps = 20000
-            self.do_DDrf_Spect()
-            result_dict = self.pulsed_measurement_logic.do_fit('Sine_Fixed_Freq_360')
-            amplitude = float(result_dict.params['amplitude'].value)
-            DDRFamplist.append([freq, amplitude])
-            outfile.write("{:.15f}\t{:.15f}\n".format(freq, amplitude))
-            outfile.flush()
+        try:
+            # Measure Qubit-1 transition frequency#
+            res_freq = 1.448466e9
+            self.generate_params['microwave_frequency'] = res_freq
+            self.pulsedODMR_params['freq_start'] = res_freq - 5.0e6
+            self.pulsedODMR_params['freq_step'] = 0.1e6
+            self.pulsedODMR_sweeps = 80000
+            self.do_pulsedODMR()
             time.sleep(2)
-        outfile.close()
-        fig = plt.figure()
-        ax = plt.axes()
-        ax.set_title('DDRF calibration')
-        ax.set_xlabel('frequency in Hz')
-        ax.set_ylabel('amplitude')
-        DDRFampArray = np.array(DDRFamplist)
-        ax.plot(DDRFampArray[:, 0], DDRFampArray[:, 1])
-        plt.show()
+            result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
+            self.calib_params['res_freq'] = float(result_dict.params['center'].value)
+            time.sleep(2)
+
+            # Measure Qubit-1 gate parameters#
+            self.rabi_sweeps = 80000
+            self.do_rabi(isSlow=False)  # perform fast Rabi
+            result_dict = self.pulsed_measurement_logic.do_fit('Sine')
+            self.calib_params['rabi_period_HighPower'] = float(1 / (result_dict.params['frequency'].value))
+            self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
+            self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+            # xq1i.pulsed_measurement_logic.do_fit('No Fit')
+            time.sleep(2)
+
+            # calibration of CnNOTe (if nuclear spin in state 0, electron spin is flipped)#
+            self.rabi_sweeps = 80000
+            self.do_rabi(isSlow=True)  # perform slow Rabi
+            result_dict = self.pulsed_measurement_logic.do_fit('Sine')
+            self.calib_params['rabi_period_LowPower'] = float(1 / (result_dict.params['frequency'].value))
+            self.calib_params['rabi_offset'] = float(result_dict.params['offset'].value)
+            self.calib_params['rabi_amplitude'] = abs(float(result_dict.params['amplitude'].value))
+
+            self.saveCalibParams()
+        except KeyboardInterrupt:
+            self._interruptPulsedMeasurement()
+            print('\033[91m' + 'WARNING: User interrupt of QB1 calibration, measurement sequence stopped.' + '\033[0m')
+
+
+    def qb2_calibration(self, type='partial'):
+        try:
+            # Measure Qubit-2 transition frequency m_s=0#
+            self.nucspect_params['NV_pi'] = False
+            self.nucspect_params['freq_start'] = 5.05e6
+            self.nucspect_sweeps = 80000
+            self.do_Nucspect()
+            time.sleep(2)
+            result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
+            self.calib_params['RF_freq0'] = float(result_dict.params['center'].value)
+
+            # Measure Qubit-2 gate parameters m_s=0#
+            self.nucrabi_params['NV_pi'] = False
+            self.nucrabi_sweeps = 80000
+            self.do_NucRabi()
+            result_dict = self.pulsed_measurement_logic.do_fit('Sine')
+            self.calib_params['nucrabi_RFfreq0_period'] = float(1 / (result_dict.params['frequency'].value))
+
+            # Measure Qubit-2 transition frequency m_s=1#
+            self.nucspect_params['NV_pi'] = True
+            self.nucspect_params['freq_start'] = 2.90e6
+            self.nucspect_sweeps = 80000
+            self.do_Nucspect()
+            time.sleep(2)
+            result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
+            self.calib_params['RF_freq1'] = float(result_dict.params['center'].value)
+
+            # Measure Qubit-2 gate parameters m_s=1#
+            self.nucrabi_params['NV_pi'] = True
+            self.nucrabi_sweeps = 80000
+            self.do_NucRabi()
+            result_dict = self.pulsed_measurement_logic.do_fit('Sine')
+            self.calib_params['nucrabi_RFfreq1_period'] = float(1 / (result_dict.params['frequency'].value))
+
+            self.saveCalibParams()
+
+            if type == 'full':
+                # DDRF transition frequency measurement
+                outfile = open("./14N_Calibration/DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq']), "w")
+                DDRFamplist = []
+                freqls = np.arange(170e3, 250e3, 2e3).tolist()
+                for freq in freqls:
+                    self.DDrfspect_params['RF_freq'] = freq
+                    self.DDrfspect_sweeps = 20000
+                    self.do_DDrf_Spect()
+                    result_dict = self.pulsed_measurement_logic.do_fit('Sine_Fixed_Freq_360')
+                    amplitude = float(result_dict.params['amplitude'].value)
+                    DDRFamplist.append([freq, amplitude])
+                    outfile.write("{:.15f}\t{:.15f}\n".format(freq, amplitude))
+                    outfile.flush()
+                    time.sleep(2)
+                outfile.close()
+                fig = plt.figure()
+                ax = plt.axes()
+                ax.set_title('DDRF calibration')
+                ax.set_xlabel('frequency in Hz')
+                ax.set_ylabel('amplitude')
+                DDRFampArray = np.array(DDRFamplist)
+                ax.plot(DDRFampArray[:, 0], DDRFampArray[:, 1])
+                plt.show()
+
+        except KeyboardInterrupt:
+            self._interruptPulsedMeasurement()
+            print('\033[91m' + 'WARNING: User interrupt of QB2 calibration, measurement sequence stopped.' + '\033[0m')
 
 
     def qb3_calibration(self):
@@ -279,6 +293,13 @@ class xq1i:
     def qb4_calibration(self):
         return
 
+
+    def _interruptPulsedMeasurement(self):
+        if self.pulsed_measurement_logic.module_state() == 'locked':
+            self.pulsed_master_logic.toggle_pulsed_measurement(False)
+            # Wait until the self.pulsed_measurement_logic is actually idle and the measurement is stopped
+            while self.pulsed_measurement_logic.module_state() == 'locked':
+                time.sleep(0.5)
 
     def _executePulsedMeasurement(self, name, sweeps):
         time.sleep(0.5)
@@ -411,7 +432,8 @@ class xq1i:
                                                 +'_RotPhase_'+ str(self.DDrfspect_params['rot_phase']), with_error=False)
 
 
-    def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readState=TQstates.State00):
+    def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readState=TQstates.State00, sweeps=100e3):
+        self.QCQB12_sweeps = sweeps
         self.QCQB12_params['NV_Cpi_len'] = self.calib_params['rabi_period_LowPower']/2
         self.QCQB12_params['NV_Cpi_freq1'] = self.calib_params['res_freq']
         self.QCQB12_params['RF_freq0'] = self.calib_params['RF_freq0']
@@ -436,6 +458,62 @@ class xq1i:
         # (cannot handle enum type behind an rpyc-netref, exception raised in "represent_undefined" in ruamel/yaml/representer.py)
         self.QCQB12_params['Initial_state'] = None
         self.QCQB12_params['Readout_state'] = None
+
+
+    def run_quantum_circuit(self, ciruit, initState=TQstates.State00, sweeps=100e3):
+        try:
+            populations = {}
+            fig, axs = plt.subplots(len(TQstates), 1, sharex=True, figsize=(6, 7))
+            fig.tight_layout(pad=2.5)
+            for readState, ax in zip(TQstates, axs):
+                self.do_QuantumCircuitQB12(ciruit, initState=initState, readState=readState, sweeps=sweeps)
+                tData = covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[0])
+                sigData = self.getPopulationFromCounts(
+                    covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[1]))
+                errData = covertNetrefToNumpyArray(self.pulsed_measurement_logic.measurement_error[1]) / (
+                            2 * self.calib_params['rabi_amplitude'])
+                result_dict = self.pulsed_measurement_logic.do_fit('Sine')
+                tFit, sigFit = self.getFitFromNormalizedCounts(tData, sigData)
+                populations[readState.value] = sigFit[0]
+                ax.errorbar(tData, sigData, yerr=errData, fmt='o')
+                ax.plot(tFit, sigFit)
+                ax.grid()
+                ax.set_ylim([-0.3, 1.3])
+                ax.set_title(f'population of state {readState.value}', fontsize=10)
+                ax.set_ylabel('norm. counts')
+            plt.xlabel('Rabi driving time (s)')
+            plt.show()
+
+            sumPopulations = np.sum(list(populations.values()))
+            for state in populations:
+                populations[state] /= sumPopulations
+            self.saveMeasurementResult([{'QCQB12_sweeps': self.QCQB12_sweeps}, populations])
+
+            plt.figure(figsize=(5, 5))
+            plt.bar(populations.keys(), populations.values(), width=0.6)
+            plt.grid(axis='y')
+            plt.ylim((-0.05, 1.05))
+            plt.title(f'measurement outcome after {len(populations)} x {self.QCQB12_sweeps:,.0f} runs', fontsize=10)
+            plt.xlabel('state')
+            plt.ylabel('population')
+            plt.savefig(xq1i.measResFilePrefix + f"{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf", bbox_inches='tight')
+            plt.show()
+
+            # countsDark = xq1i.calib_params['rabi_offset'] - xq1i.calib_params['rabi_amplitude']
+            # raw_populations = np.array( [(float(ppl)-countsDark)/(2*xq1i.calib_params['rabi_amplitude']) for ppl in pulsed_measurement_logic.signal_data[1]] )
+            # populations = (1 - np.sum(raw_populations))/4 + raw_populations
+
+            # fig, ax = plt.subplots()
+            # ax.bar(['00', '01', '10', '11'], populations,
+            #        yerr = [float(err)/(2*xq1i.calib_params['rabi_amplitude']) for err in pulsed_measurement_logic.measurement_error[1]],
+            #        width=0.6)
+            # ax.set_xlabel('state')
+            # ax.set_ylabel('population')
+            # ax.set_ylim( (-0.3, 1.1) )
+            # plt.show()
+        except KeyboardInterrupt:
+            self._interruptPulsedMeasurement()
+            print('\033[91m' + 'WARNING: User interrupt of circuit execution, measurement sequence stopped.' + '\033[0m')
 
 
     def gate(self, name, qubit=0, param=0):
