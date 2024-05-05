@@ -6,6 +6,7 @@ from collections import OrderedDict
 import numpy as np
 from scipy import optimize
 import matplotlib.pyplot as plt
+from tqdm.notebook import tqdm
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import xq1iGate
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates
 
@@ -184,6 +185,8 @@ class xq1i:
 
     def qb1_calibration(self):
         try:
+            print(f"performing calibration of QB1 ...")
+
             # Measure Qubit-1 transition frequency#
             res_freq = 1.448466e9
             self.generate_params['microwave_frequency'] = res_freq
@@ -222,6 +225,8 @@ class xq1i:
 
     def qb2_calibration(self, type='partial'):
         try:
+            print(f"performing calibration of QB2 ...")
+
             # Measure Qubit-2 transition frequency m_s=0#
             self.nucspect_params['NV_pi'] = False
             self.nucspect_params['freq_start'] = 5.05e6
@@ -287,11 +292,19 @@ class xq1i:
 
 
     def qb3_calibration(self):
-        return
+        try:
+            print(f"performing calibration of QB3 ...")
+        except KeyboardInterrupt:
+            self._interruptPulsedMeasurement()
+            print('\033[91m' + 'WARNING: User interrupt of QB3 calibration, measurement sequence stopped.' + '\033[0m')
 
 
     def qb4_calibration(self):
-        return
+        try:
+            print(f"performing calibration of QB4 ...")
+        except KeyboardInterrupt:
+            self._interruptPulsedMeasurement()
+            print('\033[91m' + 'WARNING: User interrupt of QB4 calibration, measurement sequence stopped.' + '\033[0m')
 
 
     def _interruptPulsedMeasurement(self):
@@ -302,32 +315,36 @@ class xq1i:
                 time.sleep(0.5)
 
     def _executePulsedMeasurement(self, name, sweeps):
-        time.sleep(0.5)
-        self.pulsed_master_logic.sample_ensemble(name, with_load=False)
-        while self.pulsed_master_logic.status_dict['sampling_ensemble_busy']:
+        with tqdm(total=sweeps, leave=True, unit='sweeps', desc=f' ... {name}') as pbar:
             time.sleep(0.5)
-        self.pulsed_master_logic.load_ensemble(name)
-        while self.pulsed_master_logic.status_dict['loading_busy']:
+            self.pulsed_master_logic.sample_ensemble(name, with_load=False)
+            while self.pulsed_master_logic.status_dict['sampling_ensemble_busy']:
+                time.sleep(0.5)
+            self.pulsed_master_logic.load_ensemble(name)
+            while self.pulsed_master_logic.status_dict['loading_busy']:
+                time.sleep(0.5)
+            self.pulsed_master_logic.set_measurement_settings(invoke_settings=True)
             time.sleep(0.5)
-        self.pulsed_master_logic.set_measurement_settings(invoke_settings=True)
-        time.sleep(0.5)
-        self.pulsed_master_logic.set_timer_interval(5)
-        time.sleep(5.0)
-        self.pulsed_master_logic.toggle_pulsed_measurement(True)
-        while self.pulsed_measurement_logic.module_state() != 'locked':
-            time.sleep(0.5)
-        user_terminated = False
-        while self.pulsed_measurement_logic.elapsed_sweeps < sweeps:
-            if self.pulsed_measurement_logic.module_state() != 'locked':
-                user_terminated = True
-                break
-            time.sleep(0.5)
-        self.pulsed_master_logic.manually_pull_data()
-        time.sleep(1)
-        self.pulsed_master_logic.toggle_pulsed_measurement(False)
-        # Wait until the self.pulsed_measurement_logic is actually idle and the measurement is stopped
-        while self.pulsed_measurement_logic.module_state() == 'locked':
-            time.sleep(0.5)
+            self.pulsed_master_logic.set_timer_interval(5)
+            time.sleep(5.0)
+            self.pulsed_master_logic.toggle_pulsed_measurement(True)
+            while self.pulsed_measurement_logic.module_state() != 'locked':
+                time.sleep(0.5)
+            user_terminated = False
+            while self.pulsed_measurement_logic.elapsed_sweeps < sweeps:
+                pbar.n = self.pulsed_measurement_logic.elapsed_sweeps
+                pbar.refresh()
+                if self.pulsed_measurement_logic.module_state() != 'locked':
+                    user_terminated = True
+                    break
+                time.sleep(0.5)
+            pbar.total = self.pulsed_measurement_logic.elapsed_sweeps
+            self.pulsed_master_logic.manually_pull_data()
+            time.sleep(1)
+            self.pulsed_master_logic.toggle_pulsed_measurement(False)
+            # Wait until the self.pulsed_measurement_logic is actually idle and the measurement is stopped
+            while self.pulsed_measurement_logic.module_state() == 'locked':
+                time.sleep(0.5)
 
 
     def do_rabi(self, isSlow=False):
@@ -466,6 +483,7 @@ class xq1i:
             fig, axs = plt.subplots(len(TQstates), 1, sharex=True, figsize=(6, 7))
             fig.tight_layout(pad=2.5)
             for readState, ax in zip(TQstates, axs):
+                print(f"measuring population of state {readState.value} ...")
                 self.do_QuantumCircuitQB12(ciruit, initState=initState, readState=readState, sweeps=sweeps)
                 tData = covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[0])
                 sigData = self.getPopulationFromCounts(
