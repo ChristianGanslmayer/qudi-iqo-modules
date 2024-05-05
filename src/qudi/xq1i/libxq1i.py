@@ -332,13 +332,14 @@ class xq1i:
                 time.sleep(0.5)
             user_terminated = False
             while self.pulsed_measurement_logic.elapsed_sweeps < sweeps:
-                pbar.n = self.pulsed_measurement_logic.elapsed_sweeps
+                pbar.n = int(self.pulsed_measurement_logic.elapsed_sweeps)
                 pbar.refresh()
                 if self.pulsed_measurement_logic.module_state() != 'locked':
                     user_terminated = True
                     break
                 time.sleep(0.5)
-            pbar.total = self.pulsed_measurement_logic.elapsed_sweeps
+            pbar.total = int(self.pulsed_measurement_logic.elapsed_sweeps)
+            pbar.n = int(self.pulsed_measurement_logic.elapsed_sweeps)
             self.pulsed_master_logic.manually_pull_data()
             time.sleep(1)
             self.pulsed_master_logic.toggle_pulsed_measurement(False)
