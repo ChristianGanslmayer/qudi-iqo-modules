@@ -131,6 +131,15 @@ class xq1i:
         self.QCQB12_params['laser_off'] = 60.0e-9
         self.QCQB12_sweeps = 600
 
+        self.axy8_params  = self.pulsed_master_logic.generate_method_params['test_axy8']
+        self.axy8_params['name'] = 'test_axy8'
+        self.axy8_params['f1_c'] = 0.9
+        self.axy8_params['tau_c'] = 804e-9
+        self.axy8_params['num_of_points'] = 20
+        self.axy8_params['laser_on'] = 20.0e-9
+        self.axy8_params['laser_off'] = 60.0e-9
+        self.axy8_sweeps = 50e3
+
     def saveCalibParams(self):
         filename = self.calibParamsFilePrefix + datetime.datetime.now().strftime('%Y%m%d_%H%M') + '.json'
         file = open(filename, 'w')
@@ -448,6 +457,12 @@ class xq1i:
                                                 +'_cycles_'+str(self.DDrfspect_params['cyclesf'])
                                                 +'_DDorder_'+str(self.DDrfspect_params['DD_order'])
                                                 +'_RotPhase_'+ str(self.DDrfspect_params['rot_phase']), with_error=False)
+
+    def do_axy8orderscan(self):
+        self.sequence_generator_logic.delete_ensemble('test_axy8')
+        self.sequence_generator_logic.delete_block('test_axy8')
+        self.pulsed_master_logic.generate_predefined_sequence('test_axy8', self.axy8_params)
+        self._executePulsedMeasurement('test_axy8', self.axy8_sweeps)
 
 
     def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readState=TQstates.State00, sweeps=100e3):

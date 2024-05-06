@@ -21,6 +21,7 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 """
 
 import numpy as np
+import scipy.optimize
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulse_objects import PredefinedGeneratorBase
 from enum import Enum
@@ -54,8 +55,11 @@ class xq1iGate(PredefinedGeneratorBase):
                 pulse = [ self._get_idle_element(length=self.param,
                                                  increment=0) ]
             case 'rz':
-                pulse = [ self._get_idle_element(length=0.0e-9,
-                                                 increment=0) ]
+                if self.qubit == 3:
+                    pulse = self._xy8_pulse_block(QCQB12_params['pihalfZ_order'], QCQB12_params['tau_uncondZ'])
+                else:
+                    pulse = [ self._get_idle_element(length=0.0e-9,
+                                                     increment=0) ]
             case 'sx':
                 if self.qubit == 1:
                     pulse = [ self._get_mw_element(length=self.rabi_period / 4,
@@ -70,6 +74,8 @@ class xq1iGate(PredefinedGeneratorBase):
                     #                                         freqs=[QCQB12_params['RF_freq0'], QCQB12_params['RF_freq1']],
                     #                                         phases=[accumRotZAng, accumRotZAng]) ]
                     pulse = self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=1, rot_phase=accumRotZAng)
+                elif self.qubit == 3:
+                    pulse = self._axy8_pulse_block(QCQB12_params, type='c', order=accumRotZAng)
             case 'c0x':
                 if self.qubit == 1:
                     pulse = [ self._get_mw_element(length=QCQB12_params['NV_Cpi_len'],
@@ -97,6 +103,110 @@ class xq1iGate(PredefinedGeneratorBase):
                               # self._ddrf_pulse_block(QCQB12_params, type='uc', tau_count=2*QCQB12_params['DD_N']+1,
                                                      # rot_phase=accumRotZAng) )
         return pulse
+
+
+    def _xy8_pulse_block(self, order, tau_half):
+        MW_elements = {
+            'MWpix': self._get_mw_element(length=self.rabi_period / 2,
+                                          increment=0,
+                                          amp=self.microwave_amplitude,
+                                          freq=self.microwave_frequency,
+                                          phase=0),
+            'MWpiy': self._get_mw_element(length=self.rabi_period / 2,
+                                          increment=0,
+                                          amp=self.microwave_amplitude,
+                                          freq=self.microwave_frequency,
+                                          phase=90)
+        }
+        tauhalf_element = self._get_idle_element(length=tau_half, increment=0)
+        pulse_block = []
+        for n in range(1, order+1):
+            rotAxes = ['x','y'] if n%4 in (1,2) else ['y','x']
+            pulse_block += tauhalf_element
+            pulse_block += MW_elements['MWpi'+rotAxes[0]]
+            pulse_block += 2*tauhalf_element
+            pulse_block += MW_elements['MWpi'+rotAxes[1]]
+            pulse_block += tauhalf_element
+        return pulse_block
+
+
+    def _axy8_pulse_block(self, QCQB12_params, type, order):
+        print('generate axy8 block of order', order)
+        match type:
+            case 'uc':
+                tau = QCQB12_params['tau_uc']
+                f1 = QCQB12_params['f1_uc']
+            case 'c':
+                tau = QCQB12_params['tau_c']
+                f1 = QCQB12_params['f1_c']
+        spacings = self._get_axy_spacing( fe_vals=[f1, 0, 0, 0] )
+        # determine a scale factor for each tau
+        tau_factors = np.zeros(6, dtype='float64')
+        tau_factors[0] = spacings[0]
+        tau_factors[1] = spacings[1] - spacings[0]
+        tau_factors[2] = spacings[2] - spacings[1]
+        tau_factors[3] = tau_factors[2]
+        tau_factors[4] = tau_factors[1]
+        tau_factors[5] = tau_factors[0]
+        first_tau = self._get_idle_element(length=1*tau_factors[0] * 2*tau - (self.rabi_period / 4), increment=0)
+        last_tau = self._get_idle_element(length=1*tau_factors[5] * 2*tau - (self.rabi_period / 4), increment=0)
+        tau1_raw_element = self._get_idle_element(length=tau_factors[0] * 2*tau, increment=0)
+        tau6_raw_element = self._get_idle_element(length=tau_factors[5] * 2*tau, increment=0)
+        tau_elements = [
+            self._get_idle_element(length=tau_factors[k] * 2*tau - (self.rabi_period / 2), increment=0) for k in range(len(tau_factors))
+        ]
+
+        mw_elements = {
+            'pix_0':  self._get_mw_element(length=self.rabi_period/2,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=0),
+            'pix_30': self._get_mw_element(length=self.rabi_period/2,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=30),
+            'pix_90': self._get_mw_element(length=self.rabi_period/2,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=90),
+            'piy_0':  self._get_mw_element(length=self.rabi_period/2,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=90),
+            'piy_30': self._get_mw_element(length=self.rabi_period/2,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=120),
+            'piy_90': self._get_mw_element(length=self.rabi_period/2,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=180)
+        }
+
+        rot_angles = ['30', '0', '90', '0', '30']
+        pulse_block = []
+        for n in range(1, order+1):
+            rotAxes = ['x', 'y'] if n % 4 in (1, 2) else ['y', 'x']
+            for _ in range(2):
+                #rotAxes[0]
+                for angle, tau_elem in zip(rot_angles, tau_elements):
+                    pulse_block += [tau_elem]
+                    pulse_block += [ mw_elements['pi' + rotAxes[0] + '_' + angle] ]
+                pulse_block += [tau6_raw_element]
+                #rotAxes[1]
+                for angle, tau_elem in zip(rot_angles, reversed(tau_elements)):
+                    pulse_block += [tau_elem]
+                    pulse_block += [ mw_elements['pi' + rotAxes[1] + '_' + angle] ]
+                pulse_block += [tau1_raw_element]
+        pulse_block[0] = first_tau
+        pulse_block[-1] = last_tau
+        return pulse_block
 
 
     def _ddrf_pulse_block(self, QCQB12_params, type, tau_count=1, rot_phase=0):
@@ -189,6 +299,26 @@ class xq1iGate(PredefinedGeneratorBase):
         return (instantaneous_phase + phase_diff + phase)%360
 
 
+    @staticmethod
+    def _get_axy_spacing(fe_vals = [1.0, 0.0, 0.0, 0.0]):
+        # define function to solve
+        def kdd5even(x):
+            return_val = np.zeros(4, dtype='float64')
+            x4 = x[1] + x[3] - (x[0] + x[2]) + np.pi/2
+            for k in range(1,5):
+                return_val[k-1] = fe_vals[k-1] - 4/(k * np.pi) * (
+                        np.sin(k*x[0]) + np.sin(k*x[2]) + np.sin(k*x4) - np.sin(k*x[1]) - np.sin(k*x[3])
+                    )
+            return return_val
+
+        # Initial angles for solver
+        x0 = np.array([0.1 * np.pi, 0.3 * np.pi, 0.6 * np.pi, 0.9 * np.pi], dtype='float64')
+        # Solve for kdd5even(x) = 0
+        solved_x = scipy.optimize.fsolve(kdd5even, x0)
+        solved_x = np.append(solved_x, solved_x[1] + solved_x[3] - (solved_x[0] + solved_x[2]) + np.pi/2)
+        return solved_x / (2*np.pi)
+
+
 
 class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
     """
@@ -202,6 +332,73 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
     ################################################################################################
     #                             Generation methods for waveforms                                 #
     ################################################################################################
+
+    def generate_test_axy8(self, name='test_axy8', tau_c=0.5e-6, num_of_points=50,
+                          f1_c=1.0, laser_on=20.0e-9, laser_off=60.0e-9):
+
+        for methodParams in self._sgl.generate_method_params.values():
+            if methodParams['name'] == name:
+                QCQB12_params = methodParams
+                break
+
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        order_array = 1 + np.arange(num_of_points, dtype='float64') * 1
+
+        # create the elements
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
+        delay_element = self._get_delay_gate_element()
+        pihalf_element = self._get_mw_element(length=self.rabi_period/4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=0)
+        gate_axy8 = xq1iGate(self._sgl, name="sx", qubit=3)
+
+        axy8_block = PulseBlock(name=name)
+        for n in range(1,num_of_points+1):
+            axy8_block.append(pihalf_element)
+            for i, pulse in enumerate(gate_axy8.get_pulse(QCQB12_params, n) ):
+                axy8_block.append(pulse)
+            axy8_block.append(pihalf_element)
+            for i, laser_trig in enumerate(laser_block):
+                axy8_block.append(laser_trig)
+            axy8_block.append(delay_element)
+            axy8_block.append(waiting_element)
+
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+        created_blocks.append(axy8_block)
+        # Create block ensemble
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((axy8_block.name, 0))
+
+        # Create and append sync trigger block if needed
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # add metadata to invoke settings later on
+        number_of_lasers = num_of_points
+        block_ensemble.measurement_information['alternating'] = False
+        block_ensemble.measurement_information['laser_ignore_list'] = list()
+        block_ensemble.measurement_information['controlled_variable'] = order_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
 
     def generate_QuantumCircuitQB12(self, name='quantumcircuitQB12',
                                     Initial_state=TQstates.State00, Readout_state=TQstates.State00,
