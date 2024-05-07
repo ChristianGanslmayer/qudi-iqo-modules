@@ -8,7 +8,7 @@ from scipy import optimize
 import matplotlib.pyplot as plt
 from tqdm.notebook import tqdm
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import xq1iGate
-from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates
+from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates, ThrQstates, ThrQReadoutCircs
 
 
 def covertNetrefToNumpyArray(data):
@@ -129,16 +129,28 @@ class xq1i:
         self.QCQB12_params['num_of_points'] = 20
         self.QCQB12_params['laser_on'] = 20.0e-9
         self.QCQB12_params['laser_off'] = 60.0e-9
-        self.QCQB12_sweeps = 600
+        self.QCQB12_sweeps = 20e3
 
-        self.axy8_params  = self.pulsed_master_logic.generate_method_params['test_axy8']
-        self.axy8_params['name'] = 'test_axy8'
-        self.axy8_params['f1_c'] = 0.9
-        self.axy8_params['tau_c'] = 804e-9
-        self.axy8_params['num_of_points'] = 20
-        self.axy8_params['laser_on'] = 20.0e-9
-        self.axy8_params['laser_off'] = 60.0e-9
-        self.axy8_sweeps = 50e3
+        self.QCQB123_params  = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB123']
+        self.QCQB123_params['name'] = 'quantumcircuitQB123'
+        self.QCQB123_params['NV_Cpi_amp'] = self.microwave_amplitude_LowPower
+        self.QCQB123_params['RF_amp0'] = self.nucrabi_RFfreq0_amp
+        self.QCQB123_params['RF_amp1'] = self.nucrabi_RFfreq1_amp
+        self.QCQB123_params['cyclesf'] = 7
+        self.QCQB123_params['DD_N'] = 8
+        self.QCQB123_params['f1_uc'] = 0.9
+        self.QCQB123_params['tau_uc'] = 804e-9
+        self.QCQB123_params['order_uc'] = 8
+        self.QCQB123_params['f1_c'] = 0.9
+        self.QCQB123_params['tau_c'] = 804e-9
+        self.QCQB123_params['order_c'] = 8
+        self.QCQB123_params['tau_z'] = 804e-9
+        self.QCQB123_params['order_z'] = 8
+        self.QCQB123_params['num_of_points'] = 20
+        self.QCQB123_params['laser_on'] = 20.0e-9
+        self.QCQB123_params['laser_off'] = 60.0e-9
+        self.QCQB123_sweeps = 20e3
+
 
     def saveCalibParams(self):
         filename = self.calibParamsFilePrefix + datetime.datetime.now().strftime('%Y%m%d_%H%M') + '.json'
@@ -458,12 +470,6 @@ class xq1i:
                                                 +'_DDorder_'+str(self.DDrfspect_params['DD_order'])
                                                 +'_RotPhase_'+ str(self.DDrfspect_params['rot_phase']), with_error=False)
 
-    def do_axy8orderscan(self):
-        self.sequence_generator_logic.delete_ensemble('test_axy8')
-        self.sequence_generator_logic.delete_block('test_axy8')
-        self.pulsed_master_logic.generate_predefined_sequence('test_axy8', self.axy8_params)
-        self._executePulsedMeasurement('test_axy8', self.axy8_sweeps)
-
 
     def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readState=TQstates.State00, sweeps=100e3):
         self.QCQB12_sweeps = sweeps
@@ -493,14 +499,47 @@ class xq1i:
         self.QCQB12_params['Readout_state'] = None
 
 
+    def do_QuantumCircuitQB123(self, qcQB123, initState=ThrQstates.State000, readState=ThrQReadoutCircs.IZI1, sweeps=100e3):
+        self.QCQB123_sweeps = sweeps
+        self.QCQB123_params['NV_Cpi_len'] = self.calib_params['rabi_period_LowPower']/2
+        self.QCQB123_params['NV_Cpi_freq1'] = self.calib_params['res_freq']
+        self.QCQB123_params['RF_freq0'] = self.calib_params['RF_freq0']
+        self.QCQB123_params['RF_freq1'] = self.calib_params['RF_freq1']
+        self.QCQB123_params['RF_pi'] = (self.calib_params['nucrabi_RFfreq0_period'] + self.calib_params['nucrabi_RFfreq1_period'])/4
+        self.QCQB123_params['Initial_state'] = initState
+        self.QCQB123_params['Readout_circ'] = readState
+        self.QCQB123_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB123])
+        self.sequence_generator_logic.delete_ensemble('quantumcircuitQB123')
+        self.sequence_generator_logic.delete_block('quantumcircuitQB123')
+        self.pulsed_master_logic.generate_predefined_sequence('QuantumCircuitQB123', self.QCQB123_params)
+
+        self._executePulsedMeasurement('quantumcircuitQB123', self.QCQB123_sweeps)
+        time.sleep(1)
+        self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + '_QCQB123_'
+                                                + '_Initstate_' + self.QCQB123_params['Initial_state'].name
+                                                + '_Readcirc_' + self.QCQB123_params['Readout_circ'].name + '_'
+                                                + '_'.join([f"{gate.name}QB{gate.qubit}" for gate in qcQB123]),
+                                                with_error=True)
+        # workaround to prevent exception in yaml-dump of status variables during qudi shutdown
+        # (cannot handle enum type behind an rpyc-netref, exception raised in "represent_undefined" in ruamel/yaml/representer.py)
+        self.QCQB123_params['Initial_state'] = None
+        self.QCQB123_params['Readout_circ'] = None
+
+
     def run_quantum_circuit(self, ciruit, initState=TQstates.State00, sweeps=100e3):
         try:
+            if isinstance(initState, ThrQstates):
+                readStates = ThrQReadoutCircs
+                circFunc = self.do_QuantumCircuitQB123
+            else:
+                readStates = TQstates
+                circFunc = self.do_QuantumCircuitQB12
             populations = {}
-            fig, axs = plt.subplots(len(TQstates), 1, sharex=True, figsize=(6, 7))
+            fig, axs = plt.subplots(len(readStates), 1, sharex=True, figsize=(6, 1.5*len(readStates)))
             fig.tight_layout(pad=2.5)
-            for readState, ax in zip(TQstates, axs):
+            for readState, ax in zip(readStates, axs):
                 print(f"measuring population of state {readState.value} ...")
-                self.do_QuantumCircuitQB12(ciruit, initState=initState, readState=readState, sweeps=sweeps)
+                circFunc(ciruit, initState=initState, readState=readState, sweeps=sweeps)
                 tData = covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[0])
                 sigData = self.getPopulationFromCounts(
                     covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[1]))
@@ -521,13 +560,15 @@ class xq1i:
             sumPopulations = np.sum(list(populations.values()))
             for state in populations:
                 populations[state] /= sumPopulations
-            self.saveMeasurementResult([{'QCQB12_sweeps': self.QCQB12_sweeps}, populations])
+            self.saveMeasurementResult([{'sweeps': sweeps}, populations])
 
-            plt.figure(figsize=(5, 5))
-            plt.bar(populations.keys(), populations.values(), width=0.6)
+            fig = plt.figure(figsize=(5, 5))
+            plt.bar( np.arange(1, len(populations)+1), populations.values(), width=0.6)
+            fig.axes[0].set_xticks( np.arange(1, len(populations)+1) )
+            fig.axes[0].set_xticklabels(populations.keys())
             plt.grid(axis='y')
             plt.ylim((-0.05, 1.05))
-            plt.title(f'measurement outcome after {len(populations)} x {self.QCQB12_sweeps:,.0f} runs', fontsize=10)
+            plt.title(f'measurement outcome after {len(populations)} x {sweeps:,.0f} runs', fontsize=10)
             plt.xlabel('state')
             plt.ylabel('population')
             plt.savefig(xq1i.measResFilePrefix + f"{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf", bbox_inches='tight')
@@ -547,6 +588,7 @@ class xq1i:
             # plt.show()
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
+            plt.close()
             print('\033[91m' + 'WARNING: User interrupt of circuit execution, measurement sequence stopped.' + '\033[0m')
 
 
