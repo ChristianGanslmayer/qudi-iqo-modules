@@ -8,7 +8,7 @@ from scipy import optimize
 import matplotlib.pyplot as plt
 from tqdm.notebook import tqdm
 from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import xq1iGate
-from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates, ThrQstates, ThrQReadoutCircs
+from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates, TQReadoutCircs, ThrQstates, ThrQReadoutCircs
 
 
 def covertNetrefToNumpyArray(data):
@@ -471,7 +471,7 @@ class xq1i:
                                                 +'_RotPhase_'+ str(self.DDrfspect_params['rot_phase']), with_error=False)
 
 
-    def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readState=TQstates.State00, sweeps=100e3):
+    def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readoutCirc=TQReadoutCircs.P00, sweeps=100e3):
         self.QCQB12_sweeps = sweeps
         self.QCQB12_params['NV_Cpi_len'] = self.calib_params['rabi_period_LowPower']/2
         self.QCQB12_params['NV_Cpi_freq1'] = self.calib_params['res_freq']
@@ -479,7 +479,7 @@ class xq1i:
         self.QCQB12_params['RF_freq1'] = self.calib_params['RF_freq1']
         self.QCQB12_params['RF_pi'] = (self.calib_params['nucrabi_RFfreq0_period'] + self.calib_params['nucrabi_RFfreq1_period'])/4
         self.QCQB12_params['Initial_state'] = initState
-        self.QCQB12_params['Readout_state'] = readState
+        self.QCQB12_params['Readout_circ'] = readoutCirc
         self.QCQB12_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB12])
         #print(self.QCQB12_params['gate_operations'])
         self.sequence_generator_logic.delete_ensemble('quantumcircuitQB12')
@@ -490,16 +490,16 @@ class xq1i:
         time.sleep(1)
         self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + '_QCQB12_'
                                                 + '_Initstate_' + self.QCQB12_params['Initial_state'].name
-                                                + '_Readstate_' + self.QCQB12_params['Readout_state'].name + '_'
+                                                + '_Readcirc_' + self.QCQB12_params['Readout_circ'].name + '_'
                                                 + '_'.join([f"{gate.name}QB{gate.qubit}" for gate in qcQB12]),
                                                 with_error=True)
         # workaround to prevent exception in yaml-dump of status variables during qudi shutdown
         # (cannot handle enum type behind an rpyc-netref, exception raised in "represent_undefined" in ruamel/yaml/representer.py)
         self.QCQB12_params['Initial_state'] = None
-        self.QCQB12_params['Readout_state'] = None
+        self.QCQB12_params['Readout_circ'] = None
 
 
-    def do_QuantumCircuitQB123(self, qcQB123, initState=ThrQstates.State000, readState=ThrQReadoutCircs.IZI1, sweeps=100e3):
+    def do_QuantumCircuitQB123(self, qcQB123, initState=ThrQstates.State000, readoutCirc=ThrQReadoutCircs.IZI1, sweeps=100e3):
         self.QCQB123_sweeps = sweeps
         self.QCQB123_params['NV_Cpi_len'] = self.calib_params['rabi_period_LowPower']/2
         self.QCQB123_params['NV_Cpi_freq1'] = self.calib_params['res_freq']
@@ -507,7 +507,7 @@ class xq1i:
         self.QCQB123_params['RF_freq1'] = self.calib_params['RF_freq1']
         self.QCQB123_params['RF_pi'] = (self.calib_params['nucrabi_RFfreq0_period'] + self.calib_params['nucrabi_RFfreq1_period'])/4
         self.QCQB123_params['Initial_state'] = initState
-        self.QCQB123_params['Readout_circ'] = readState
+        self.QCQB123_params['Readout_circ'] = readoutCirc
         self.QCQB123_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB123])
         self.sequence_generator_logic.delete_ensemble('quantumcircuitQB123')
         self.sequence_generator_logic.delete_block('quantumcircuitQB123')
@@ -529,17 +529,21 @@ class xq1i:
     def run_quantum_circuit(self, ciruit, initState=TQstates.State00, sweeps=100e3):
         try:
             if isinstance(initState, ThrQstates):
-                readStates = ThrQReadoutCircs
+                basisStates = ThrQstates
+                readoutCircs = ThrQReadoutCircs
                 circFunc = self.do_QuantumCircuitQB123
+                populFunc = self.calcThrQPopulations
             else:
-                readStates = TQstates
+                basisStates = TQstates
+                readoutCircs = TQReadoutCircs
                 circFunc = self.do_QuantumCircuitQB12
-            populations = {}
-            fig, axs = plt.subplots(len(readStates), 1, sharex=True, figsize=(6, 1.5*len(readStates)))
-            fig.tight_layout(pad=2.5)
-            for readState, ax in zip(readStates, axs):
-                print(f"measuring population of state {readState.value} ...")
-                circFunc(ciruit, initState=initState, readState=readState, sweeps=sweeps)
+                populFunc = self.calcTQPopulations
+            expectation_values = {}
+            #fig, axs = plt.subplots(len(readStates), 1, sharex=True, figsize=(6, 1.5*len(readStates)))
+            #fig.tight_layout(pad=2.5)
+            for ind, readoutCirc in enumerate(readoutCircs):
+                print(f"running readout circuit {ind+1} of {len(readoutCircs)} ...")
+                circFunc(ciruit, initState=initState, readoutCirc=readoutCirc, sweeps=sweeps)
                 tData = covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[0])
                 sigData = self.getPopulationFromCounts(
                     covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[1]))
@@ -547,28 +551,27 @@ class xq1i:
                             2 * self.calib_params['rabi_amplitude'])
                 result_dict = self.pulsed_measurement_logic.do_fit('Sine')
                 tFit, sigFit = self.getFitFromNormalizedCounts(tData, sigData)
-                populations[readState.value] = sigFit[0]
-                ax.errorbar(tData, sigData, yerr=errData, fmt='o')
-                ax.plot(tFit, sigFit)
-                ax.grid()
-                ax.set_ylim([-0.3, 1.3])
-                ax.set_title(f'population of state {readState.value}', fontsize=10)
-                ax.set_ylabel('norm. counts')
-            plt.xlabel('Rabi driving time (s)')
-            plt.show()
+                expectation_values[readoutCirc.value] = sigFit[0]
+                plt.figure(figsize=(7, 1.5))
+                plt.errorbar(tData, sigData, yerr=errData, fmt='o')
+                plt.plot(tFit, sigFit)
+                plt.grid()
+                plt.ylim([-0.3, 1.3])
+                plt.title(f'measurement data for readout circuit {ind+1}', fontsize=10)
+                plt.ylabel('norm. counts')
+                plt.xlabel('Rabi driving time (s)')
+                plt.show()
 
-            sumPopulations = np.sum(list(populations.values()))
-            for state in populations:
-                populations[state] /= sumPopulations
-            self.saveMeasurementResult([{'sweeps': sweeps}, populations])
+            populations = populFunc(expectation_values)
+            self.saveMeasurementResult([{'sweeps': sweeps}, populations.tolist()])
 
             fig = plt.figure(figsize=(5, 5))
-            plt.bar( np.arange(1, len(populations)+1), populations.values(), width=0.6)
+            plt.bar( np.arange(1, len(populations)+1), populations, width=0.6)
             fig.axes[0].set_xticks( np.arange(1, len(populations)+1) )
-            fig.axes[0].set_xticklabels(populations.keys())
+            fig.axes[0].set_xticklabels( [state.value for state in basisStates] )
             plt.grid(axis='y')
             plt.ylim((-0.05, 1.05))
-            plt.title(f'measurement outcome after {len(populations)} x {sweeps:,.0f} runs', fontsize=10)
+            plt.title(f'measurement outcome after {len(readoutCircs)} x {sweeps:,.0f} runs', fontsize=10)
             plt.xlabel('state')
             plt.ylabel('population')
             plt.savefig(xq1i.measResFilePrefix + f"{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf", bbox_inches='tight')
@@ -588,6 +591,10 @@ class xq1i:
             # plt.show()
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
+            self.QCQB12_params['Initial_state'] = None
+            self.QCQB12_params['Readout_state'] = None
+            self.QCQB123_params['Initial_state'] = None
+            self.QCQB123_params['Readout_circ'] = None
             plt.close()
             print('\033[91m' + 'WARNING: User interrupt of circuit execution, measurement sequence stopped.' + '\033[0m')
 
@@ -615,3 +622,39 @@ class xq1i:
         tFit = np.linspace(0, tData[-1], 100)
         sigFit = fit_func(tFit, *fitparams)
         return tFit,sigFit
+
+
+    def calcTQPopulations(self, vals):
+        id_diag = np.array([1.0, 1.0])
+        z_diag = np.array([1.0, -1.0])
+        basisOne = [id_diag, z_diag]
+        basisTwo = [ np.kron(op1, op2) for op1 in basisOne for op2 in basisOne ]
+        expect_vals = [
+            2*( vals[TQReadoutCircs.P00.value] + vals[TQReadoutCircs.P10.value] ) - 1,
+            2*( vals[TQReadoutCircs.P00.value] + vals[TQReadoutCircs.P01.value] ) - 1,
+            1 - 2*( vals[TQReadoutCircs.P01.value] + vals[TQReadoutCircs.P10.value] )
+        ]
+        populations = np.ones( len(TQstates), dtype=np.float64 ) / 4
+        for op,expval in zip(basisTwo[1:],expect_vals):
+            populations += expval*op / 4
+        return populations
+
+
+    def calcThrQPopulations(self, vals):
+        id_diag = np.array([1.0, 1.0])
+        z_diag = np.array([1.0, -1.0])
+        basisOne = [id_diag, z_diag]
+        basisThree = [ np.kron(op1, np.kron(op2, op3)) for op1 in basisOne for op2 in basisOne for op3 in basisOne ]
+        expect_vals = [
+            -2*( vals[ThrQReadoutCircs.IIZ1.value] + vals[ThrQReadoutCircs.IIZ2.value] ) + 1,
+             2*( vals[ThrQReadoutCircs.IZI1.value] + vals[ThrQReadoutCircs.IZI2.value] ) - 1,
+            -2*( vals[ThrQReadoutCircs.IIZ1.value] + vals[ThrQReadoutCircs.IZZ2.value] ) + 1,
+             2*( vals[ThrQReadoutCircs.IZI1.value] + vals[ThrQReadoutCircs.ZII2.value] ) - 1,
+             2*( vals[ThrQReadoutCircs.ZIZ1.value] + vals[ThrQReadoutCircs.ZIZ2.value] ) - 1,
+             2*( vals[ThrQReadoutCircs.IZI1.value] + vals[ThrQReadoutCircs.ZZI2.value] ) - 1,
+             2*( vals[ThrQReadoutCircs.ZIZ1.value] + vals[ThrQReadoutCircs.ZZZ2.value] ) - 1
+        ]
+        populations = np.ones( len(ThrQstates), dtype=np.float64 ) / 8
+        for op,expval in zip(basisThree[1:],expect_vals):
+            populations += expval*op / 8
+        return populations
