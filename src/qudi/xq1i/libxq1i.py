@@ -21,8 +21,8 @@ class xq1i:
     measResFilePrefix = os.path.join('./', 'measurement_results', 'run_')
     microwave_amplitude_LowPower = 0.001
     microwave_amplitude_HighPower = 0.1
-    nucrabi_RFfreq0_amp = 0.01
-    nucrabi_RFfreq1_amp = 0.01
+    nucrabi_RFfreq0_amp = 0.02
+    nucrabi_RFfreq1_amp = 0.02
 
     def __init__(self, pulsed_master_logic, pulsed_measurement_logic, sequence_generator_logic):
         self.pulsed_master_logic = pulsed_master_logic
@@ -83,7 +83,7 @@ class xq1i:
         self.nucspect_params['RF_pi_len'] = 40.0e-9
         self.nucspect_params['freq_start'] = 5.05e6
         self.nucspect_params['freq_step'] = 2.0e3
-        self.nucspect_params['spect_amp'] = 0.02
+        self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
         self.nucspect_params['spect_pi'] = 40000e-9
         self.nucspect_params['num_of_points'] = 50
         self.nucspect_params['laser_on'] = 20.0e-9
@@ -98,7 +98,7 @@ class xq1i:
         self.nucrabi_params['RF_amp'] = 0.00
         self.nucrabi_params['RF_pi_len'] = 100.0e-9
         self.nucrabi_params['Nuc_rabi_freq'] = 5.06e6
-        self.nucrabi_params['Nuc_rabi_amp'] = 0.02
+        self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq0_amp
         self.nucrabi_params['tau_start'] = 10.0e-9
         self.nucrabi_params['tau_step'] = 8.0e-6
         self.nucrabi_params['num_of_points'] = 25
@@ -119,6 +119,22 @@ class xq1i:
         self.DDrfspect_params['laser_off'] = 60.0e-9
         self.DDrfspect_sweeps = 100000
 
+        self.axy8_params = self.pulsed_master_logic.generate_method_params['AXY']
+        self.axy8_params['name'] = 'axy8'
+        self.axy8_params['tau_start'] = 0.5e-6
+        self.axy8_params['tau_step'] =  10.0e-9
+        self.axy8_params['num_of_points'] = 50
+        self.axy8_params['xy8_order'] = 4
+        self.axy8_params['f1'] = 0.9
+        self.axy8_params['scale_tau2_first'] = 1.0
+        self.axy8_params['scale_tau2_last'] = 1.0
+        self.axy8_params['init_pihalf_pulse'] = True
+        self.axy8_params['Init_phase'] = 0
+        self.axy8_params['Read_phase'] = 0
+        self.axy8_params['laser_on'] = 20.0e-9
+        self.axy8_params['laser_off'] = 60.0e-9
+        self.axy8_sweeps = 20e3
+
         self.QCQB12_params  = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB12']
         self.QCQB12_params['name'] = 'quantumcircuitQB12'
         self.QCQB12_params['NV_Cpi_amp'] = self.microwave_amplitude_LowPower
@@ -138,14 +154,14 @@ class xq1i:
         self.QCQB123_params['RF_amp1'] = self.nucrabi_RFfreq1_amp
         self.QCQB123_params['cyclesf'] = 7
         self.QCQB123_params['DD_N'] = 8
-        self.QCQB123_params['f1_uc'] = 0.9
-        self.QCQB123_params['tau_uc'] = 804e-9
-        self.QCQB123_params['order_uc'] = 8
+        self.QCQB123_params['f1_uc'] = 0.95
+        self.QCQB123_params['tau_uc'] = 1608e-9
+        self.QCQB123_params['order_uc'] = 15
         self.QCQB123_params['f1_c'] = 0.9
         self.QCQB123_params['tau_c'] = 804e-9
         self.QCQB123_params['order_c'] = 8
-        self.QCQB123_params['tau_z'] = 804e-9
-        self.QCQB123_params['order_z'] = 8
+        self.QCQB123_params['tau_z'] = 766.25e-9
+        self.QCQB123_params['order_z'] = 4
         self.QCQB123_params['num_of_points'] = 20
         self.QCQB123_params['laser_on'] = 20.0e-9
         self.QCQB123_params['laser_off'] = 60.0e-9
@@ -251,6 +267,7 @@ class xq1i:
             # Measure Qubit-2 transition frequency m_s=0#
             self.nucspect_params['NV_pi'] = False
             self.nucspect_params['freq_start'] = 5.05e6
+            self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
             self.nucspect_sweeps = 80000
             self.do_Nucspect()
             time.sleep(2)
@@ -259,6 +276,7 @@ class xq1i:
 
             # Measure Qubit-2 gate parameters m_s=0#
             self.nucrabi_params['NV_pi'] = False
+            self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq0_amp
             self.nucrabi_sweeps = 80000
             self.do_NucRabi()
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
@@ -266,6 +284,7 @@ class xq1i:
 
             # Measure Qubit-2 transition frequency m_s=1#
             self.nucspect_params['NV_pi'] = True
+            self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq1_amp
             self.nucspect_params['freq_start'] = 2.90e6
             self.nucspect_sweeps = 80000
             self.do_Nucspect()
@@ -275,6 +294,7 @@ class xq1i:
 
             # Measure Qubit-2 gate parameters m_s=1#
             self.nucrabi_params['NV_pi'] = True
+            self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq1_amp
             self.nucrabi_sweeps = 80000
             self.do_NucRabi()
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
@@ -315,6 +335,7 @@ class xq1i:
     def qb3_calibration(self):
         try:
             print(f"performing calibration of QB3 ...")
+            self.do_AXY8_Spect()
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
             print('\033[91m' + 'WARNING: User interrupt of QB3 calibration, measurement sequence stopped.' + '\033[0m')
@@ -469,6 +490,18 @@ class xq1i:
                                                 +'_cycles_'+str(self.DDrfspect_params['cyclesf'])
                                                 +'_DDorder_'+str(self.DDrfspect_params['DD_order'])
                                                 +'_RotPhase_'+ str(self.DDrfspect_params['rot_phase']), with_error=False)
+
+
+    def do_AXY8_Spect(self):
+        self.sequence_generator_logic.delete_ensemble('axy8')
+        self.sequence_generator_logic.delete_block('axy8')
+        self.pulsed_master_logic.generate_predefined_sequence('AXY', self.axy8_params)
+
+        self._executePulsedMeasurement('axy8', self.DDrfspect_sweeps)
+        self.pulsed_measurement_logic.do_fit('Lorentzian Peak')
+        self.pulsed_master_logic.save_measurement_data(tag = self.POI_name +
+                                                + f'_AXY8_order_{self.axy8_params["xy8_order"]}_f1_{self.axy8_params["f1"]:.2f}'
+                                                ,with_error=False)
 
 
     def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readoutCirc=TQReadoutCircs.P00, sweeps=100e3):
