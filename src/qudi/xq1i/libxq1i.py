@@ -7,8 +7,8 @@ import numpy as np
 from scipy import optimize
 import matplotlib.pyplot as plt
 from tqdm.notebook import tqdm
-from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import xq1iGate
-from qudi.logic.pulsed.predefined_generate_methods.qb12_control_methods import TQstates, TQReadoutCircs, ThrQstates, ThrQReadoutCircs, FourQstates, FourQReadoutCircs
+from qudi.logic.pulsed.predefined_generate_methods.qb1234_control_methods import xq1iGate
+from qudi.logic.pulsed.predefined_generate_methods.qb1234_control_methods import TQstates, TQReadoutCircs, ThrQstates, ThrQReadoutCircs, FourQstates, FourQReadoutCircs
 
 
 def covertNetrefToNumpyArray(data):
@@ -160,7 +160,7 @@ class xq1i:
         self.QCQB123_params['f1_c'] = 0.9
         self.QCQB123_params['tau_c'] = 804e-9
         self.QCQB123_params['order_c'] = 8
-        self.QCQB123_params['tau_z'] = 766.25e-9
+        self.QCQB123_params['tau_z'] = 1.5325e-6
         self.QCQB123_params['order_z'] = 4
         self.QCQB123_params['num_of_points'] = 20
         self.QCQB123_params['laser_on'] = 20.0e-9
@@ -179,7 +179,7 @@ class xq1i:
         self.QCQB1234_params['order_uc'] = 15
         self.QCQB1234_params['f1_c'] = 0.9
         self.QCQB1234_params['tau_c'] = 804e-9
-        self.QCQB1234_params['order_c'] = 8
+        self.QCQB1234_params['order_c'] = 4
         self.QCQB1234_params['tau_z'] = 766.25e-9
         self.QCQB1234_params['order_z'] = 4
         self.QCQB1234_params['num_of_points'] = 20
@@ -388,6 +388,7 @@ class xq1i:
             time.sleep(0.5)
             self.pulsed_master_logic.set_timer_interval(5)
             time.sleep(5.0)
+            #return
             self.pulsed_master_logic.toggle_pulsed_measurement(True)
             while self.pulsed_measurement_logic.module_state() != 'locked':
                 time.sleep(0.5)

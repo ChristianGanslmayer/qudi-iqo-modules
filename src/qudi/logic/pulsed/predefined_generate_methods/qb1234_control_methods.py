@@ -133,7 +133,6 @@ class xq1iGate(PredefinedGeneratorBase):
                           self._get_idle_element(length=self.wait_time, increment=0)]
             case 'rz':
                 if self.qubit == 3:
-                    # TODO: check tau_z: is it already meant as tau_half_z (-> no division by 2?)
                     pulse = self._xy8_pulse_block( QC_params['order_z'], QC_params['tau_z']/2 )
                 elif self.qubit == 4:
                     pulse = []
@@ -406,7 +405,7 @@ class xq1iGate(PredefinedGeneratorBase):
 
 
 
-class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
+class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
     """
 
     """
