@@ -39,6 +39,7 @@ class TQReadoutCircs(Enum):
     P01 = 2
     P10 = 3
 
+
 class ThrQstates(Enum):
     State000 = '000'
     State001 = '001'
@@ -60,6 +61,49 @@ class ThrQReadoutCircs(Enum):
     ZIZ2 = 8
     ZZI2 = 9
     ZZZ2 = 10
+
+
+class FourQstates(Enum):
+    State0000 = '0000'
+    State0001 = '0001'
+    State0010 = '0010'
+    State0011 = '0011'
+    State0100 = '0100'
+    State0101 = '0101'
+    State0110 = '0110'
+    State0111 = '0111'
+    State1000 = '1000'
+    State1001 = '1001'
+    State1010 = '1010'
+    State1011 = '1011'
+    State1100 = '1100'
+    State1101 = '1101'
+    State1110 = '1110'
+    State1111 = '1111'
+
+class FourQReadoutCircs(Enum):
+    IIZI1 = 1
+    IIZI2 = 2
+    IZII1 = 3
+    IZII2 = 4
+    IZZI2 = 5
+    ZIII2 = 6
+    ZIZI1 = 7
+    ZIZI2 = 8
+    ZZII2 = 9
+    ZZZI2 = 10
+    IIIZ1 = 11
+    IIIZ2 = 12
+    IIZZ1 = 13
+    IIZZ2 = 14
+    IZIZ2 = 15
+    IZZZ2 = 16
+    ZIIZ1 = 17
+    ZIIZ2 = 18
+    ZIZZ1 = 19
+    ZIZZ2 = 20
+    ZZIZ2 = 21
+    ZZZZ2 = 22
 
 
 class xq1iGate(PredefinedGeneratorBase):
@@ -91,6 +135,8 @@ class xq1iGate(PredefinedGeneratorBase):
                 if self.qubit == 3:
                     # TODO: check tau_z: is it already meant as tau_half_z (-> no division by 2?)
                     pulse = self._xy8_pulse_block( QC_params['order_z'], QC_params['tau_z']/2 )
+                elif self.qubit == 4:
+                    pulse = []
                 else:
                     pulse = [ self._get_idle_element(length=0.0e-9,
                                                      increment=0) ]
@@ -110,6 +156,8 @@ class xq1iGate(PredefinedGeneratorBase):
                     pulse = self._ddrf_pulse_block(QC_params, type='uc', tau_count=1, rot_phase=accumRotZAng)
                 elif self.qubit == 3:
                     pulse = self._axy8_pulse_block(QC_params['order_uc'], QC_params['tau_uc'], QC_params['f1_uc'])
+                elif self.qubit == 4:
+                    pulse = []
             case 'sy':
                 if self.qubit == 1:
                     pulse = [ self._get_mw_element(length=self.rabi_period / 4,
@@ -146,6 +194,8 @@ class xq1iGate(PredefinedGeneratorBase):
             case 'crotx':
                 if self.qubit == 3:
                     pulse = self._axy8_pulse_block(QC_params['order_c'], QC_params['tau_c'], QC_params['f1_c'])
+                elif self.qubit == 4:
+                    pulse = []
         return pulse
 
 
@@ -516,7 +566,7 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
 
 
     def generate_QuantumCircuitQB123(self, name='quantumcircuitQB123',
-                                    Initial_state=TQstates.State00, Readout_circ=ThrQReadoutCircs.IZI1,
+                                    Initial_state=ThrQstates.State000, Readout_circ=ThrQReadoutCircs.IZI1,
                                     NV_Cpi_len=1.0e-6, NV_Cpi_amp=0.05, NV_Cpi_freq1=1.432e9,
                                     RF_freq0=5.1e6, RF_amp0=0.02,  RF_freq1=5.1e6, RF_amp1=0.02,
                                     cyclesf=9, DD_N=2, RF_pi=20.0e-6,
@@ -573,12 +623,12 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
             ThrQReadoutCircs.IIZ2.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_c0q2x],
             ThrQReadoutCircs.IZI1.value: [],
             ThrQReadoutCircs.IZI2.value: [gate_c0q1x],
-            ThrQReadoutCircs.IZZ2.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_c0q2x, gate_c0q1x],
+            ThrQReadoutCircs.IZZ2.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_c1q2x, gate_c0q1x],
             ThrQReadoutCircs.ZII2.value: [gate_c0q2x],
             ThrQReadoutCircs.ZIZ1.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx],
             ThrQReadoutCircs.ZIZ2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_c0q2x],
-            ThrQReadoutCircs.ZZI2.value: [gate_c0q2x, gate_c0q1x],
-            ThrQReadoutCircs.ZZZ2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_c0q2x, gate_c0q1x]
+            ThrQReadoutCircs.ZZI2.value: [gate_c1q2x, gate_c0q1x],
+            ThrQReadoutCircs.ZZZ2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_c1q2x, gate_c0q1x]
         }
 
         # create pulse blocks from gates
@@ -604,6 +654,146 @@ class QB12ControlPredefinedGenerator(PredefinedGeneratorBase):
                                                     phase=accum_rotZAng[0])
                                )
         for laser_elem in gate_p00.get_pulse(QCQB123_params):
+            statetomo_block.append(laser_elem)
+
+        # Create block ensemble
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+        created_blocks.append(statetomo_block)
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((statetomo_block.name, num_of_points-1))
+
+        # Create and append sync trigger block if needed
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # get tau array for measurement ticks
+        tau_array = np.arange(num_of_points) * tau_step
+        # add metadata to invoke settings later on
+        number_of_lasers = 2*num_of_points
+        block_ensemble.measurement_information['alternating'] = False
+        # ignore the laser pulses used for resetting the NV after QB3 init
+        block_ensemble.measurement_information['laser_ignore_list'] = [_ for _ in range(0, number_of_lasers, 2)]
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+                            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+
+    def generate_QuantumCircuitQB1234(self, name='quantumcircuitQB1234',
+                                    Initial_state=FourQstates.State0000, Readout_circ=FourQReadoutCircs.IZII1,
+                                    NV_Cpi_len=1.0e-6, NV_Cpi_amp=0.05, NV_Cpi_freq1=1.432e9,
+                                    RF_freq0=5.1e6, RF_amp0=0.02,  RF_freq1=5.1e6, RF_amp1=0.02,
+                                    cyclesf=9, DD_N=2, RF_pi=20.0e-6,
+                                    f1_uc=1.0, tau_uc=0.8e-6, order_uc=8,
+                                    f1_c=1.0, tau_c=0.8e-6, order_c=8,
+                                    tau_z=0.8e-6, order_z = 8,
+                                    gate_operations = "sx(0)[1], rz(90)[2], sx(0)[2], sx(0)[3], sx(0)[4]",
+                                    num_of_points=50,
+                                    laser_on=20.0e-9, laser_off=60.0e-9):
+        """
+
+        """
+        for methodParams in self._sgl.generate_method_params.values():
+            if methodParams['name'] == name:
+                QCQB1234_params = methodParams
+                break
+
+        gate_noop = xq1iGate(self._sgl, name='noop', param=0.0e-9)
+        gate_p00 = xq1iGate(self._sgl, name='p00')
+        gate_c0q1x = xq1iGate(self._sgl, name="c0x", qubit=1)
+        gate_c0q2x = xq1iGate(self._sgl, name="c0x", qubit=2)
+        gate_c1q2x = xq1iGate(self._sgl, name="c1x", qubit=2)
+        gate_q1sx = xq1iGate(self._sgl, name="sx", qubit=1)
+        gate_q1sy = xq1iGate(self._sgl, name="sy", qubit=1)
+        gate_q3sx = xq1iGate(self._sgl, name="sx", qubit=3)
+        gate_q3rzPihalf = xq1iGate(self._sgl, name="rz", qubit=3, param=90)
+        gate_crotq3x = xq1iGate(self._sgl, name="crotx", qubit=3)
+
+        # gates for initialization
+        init_gates = {
+            FourQstates.State0000.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00],
+            FourQstates.State0001.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00],
+            FourQstates.State0010.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_c0q2x],
+            FourQstates.State0011.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_c0q2x],
+            FourQstates.State0100.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx],
+            FourQstates.State0101.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx],
+            FourQstates.State0110.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx, gate_c1q2x],
+            FourQstates.State0111.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx, gate_c1q2x],
+            FourQstates.State1000.value: [],
+            FourQstates.State1001.value: [],
+            FourQstates.State1010.value: [],
+            FourQstates.State1011.value: [],
+            FourQstates.State1100.value: [],
+            FourQstates.State1101.value: [],
+            FourQstates.State1110.value: [],
+            FourQstates.State1111.value: []
+        }
+
+        # gates in circuit
+        gate_list = []
+        regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
+        for gate in gate_operations.replace(" ", "").split(","):
+            regex_match = regex_pattern.match(gate)
+            gate_name = regex_match.group(1)
+            param = float(regex_match.group(2))
+            qubit = int(regex_match.group(3))
+            gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
+
+        # gates for readout
+        readout_gates = {
+            FourQReadoutCircs.IIZI1.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy],
+            FourQReadoutCircs.IIZI2.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_c0q2x],
+            FourQReadoutCircs.IZII1.value: [],
+            FourQReadoutCircs.IZII2.value: [gate_c0q1x],
+            FourQReadoutCircs.IZZI2.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_c1q2x, gate_c0q1x],
+            FourQReadoutCircs.ZIII2.value: [gate_c0q2x],
+            FourQReadoutCircs.ZIZI1.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx],
+            FourQReadoutCircs.ZIZI2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_c0q2x],
+            FourQReadoutCircs.ZZII2.value: [gate_c1q2x, gate_c0q1x],
+            FourQReadoutCircs.ZZZI2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_c1q2x, gate_c0q1x],
+            FourQReadoutCircs.IIIZ1.value: [],
+            FourQReadoutCircs.IIIZ2.value: [],
+            FourQReadoutCircs.IIZZ1.value: [],
+            FourQReadoutCircs.IIZZ2.value: [],
+            FourQReadoutCircs.IZIZ2.value: [],
+            FourQReadoutCircs.IZZZ2.value: [],
+            FourQReadoutCircs.ZIIZ1.value: [],
+            FourQReadoutCircs.ZIIZ2.value: [],
+            FourQReadoutCircs.ZIZZ1.value: [],
+            FourQReadoutCircs.ZIZZ2.value: [],
+            FourQReadoutCircs.ZZIZ2.value: [],
+            FourQReadoutCircs.ZZZZ2.value: [],
+        }
+
+        # create pulse blocks from gates
+        opersblock_list=[]
+        accum_rotZAng = [0, 0, 0, 0]
+        for gate in init_gates[Initial_state.value] + gate_list + readout_gates[Readout_circ.value]:
+            if gate.name == 'rz':
+                accum_rotZAng[gate.qubit-1] += gate.param
+            opersblock_list += gate.get_pulse(QCQB1234_params, accum_rotZAng[gate.qubit-1])
+
+        # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
+        statetomo_block = PulseBlock(name=name)
+
+        # readout of the fluorescence rate corresponding to a single Readout_circ (population transfer to 00 and subsequent Rabi driving)
+        #TODO: initial padding to ensure the same (or similar) overall sequence length for all readout circuits
+        #if Readout_circ.value in (TQstates.State00.value, TQstates.State10.value):
+        #    statetomo_block.append( self._get_idle_element(length=QCQB123_params['RF_pi'], increment=0) )
+        for pulse in opersblock_list:
+            statetomo_block.append(pulse)
+        tau_step = QCQB1234_params['NV_Cpi_len']/5
+        statetomo_block.append(self._get_mw_element(length=0, increment=tau_step,
+                                                    amp=QCQB1234_params['NV_Cpi_amp'], freq=QCQB1234_params['NV_Cpi_freq1'],
+                                                    phase=accum_rotZAng[0])
+                               )
+        for laser_elem in gate_p00.get_pulse(QCQB1234_params):
             statetomo_block.append(laser_elem)
 
         # Create block ensemble
