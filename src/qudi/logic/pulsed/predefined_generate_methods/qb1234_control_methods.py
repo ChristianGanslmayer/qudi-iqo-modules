@@ -713,25 +713,30 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
         gate_q3sx = xq1iGate(self._sgl, name="sx", qubit=3)
         gate_q3rzPihalf = xq1iGate(self._sgl, name="rz", qubit=3, param=90)
         gate_crotq3x = xq1iGate(self._sgl, name="crotx", qubit=3)
+        gate_q4sx = xq1iGate(self._sgl, name="sx", qubit=4)
+        gate_q4rzPihalf = xq1iGate(self._sgl, name="rz", qubit=4, param=90)
+        gate_crotq4x = xq1iGate(self._sgl, name="crotx", qubit=4)
 
         # gates for initialization
+        qb3_init_block = [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00]
+        qb4_init_block = [gate_q1sy, gate_crotq4x, gate_q1sx, gate_q4rzPihalf, gate_crotq4x, gate_p00]
         init_gates = {
-            FourQstates.State0000.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00],
-            FourQstates.State0001.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00],
-            FourQstates.State0010.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_c0q2x],
-            FourQstates.State0011.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_c0q2x],
-            FourQstates.State0100.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx],
-            FourQstates.State0101.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx],
-            FourQstates.State0110.value: [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx, gate_c1q2x],
-            FourQstates.State0111.value: [gate_q1sx, gate_q1sx, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00, gate_q1sx, gate_q1sx, gate_c1q2x],
-            FourQstates.State1000.value: [],
-            FourQstates.State1001.value: [],
-            FourQstates.State1010.value: [],
-            FourQstates.State1011.value: [],
-            FourQstates.State1100.value: [],
-            FourQstates.State1101.value: [],
-            FourQstates.State1110.value: [],
-            FourQstates.State1111.value: []
+            FourQstates.State0000.value: qb3_init_block + qb4_init_block,
+            FourQstates.State0001.value: qb3_init_block + 2*[gate_q1sx] + qb4_init_block,
+            FourQstates.State0010.value: 2*[gate_q1sx] + qb3_init_block + qb4_init_block,
+            FourQstates.State0011.value: 2*[gate_q1sx] + qb3_init_block + 2*[gate_q1sx] + qb4_init_block,
+            FourQstates.State0100.value: qb3_init_block + qb4_init_block + [gate_c0q2x],
+            FourQstates.State0101.value: qb3_init_block + 2*[gate_q1sx] + qb4_init_block + [gate_c0q2x],
+            FourQstates.State0110.value: 2*[gate_q1sx] + qb3_init_block + qb4_init_block + [gate_c0q2x],
+            FourQstates.State0111.value: 2*[gate_q1sx] + qb3_init_block + 2*[gate_q1sx] + qb4_init_block + [gate_c0q2x],
+            FourQstates.State1000.value: qb3_init_block + qb4_init_block + 2*[gate_q1sx],
+            FourQstates.State1001.value: qb3_init_block + 2*[gate_q1sx] + qb4_init_block + 2*[gate_q1sx],
+            FourQstates.State1010.value: 2*[gate_q1sx] + qb3_init_block + qb4_init_block + 2*[gate_q1sx],
+            FourQstates.State1011.value: 2*[gate_q1sx] + qb3_init_block + 2*[gate_q1sx] + qb4_init_block + 2*[gate_q1sx],
+            FourQstates.State1100.value: qb3_init_block + qb4_init_block + [gate_c0q2x] + 2*[gate_q1sx],
+            FourQstates.State1101.value: qb3_init_block + 2*[gate_q1sx] + qb4_init_block + [gate_c0q2x] + 2*[gate_q1sx],
+            FourQstates.State1110.value: 2*[gate_q1sx] + qb3_init_block + qb4_init_block + [gate_c0q2x] + 2*[gate_q1sx],
+            FourQstates.State1111.value: 2*[gate_q1sx] + qb3_init_block + 2*[gate_q1sx] + qb4_init_block + [gate_c0q2x] + 2*[gate_q1sx]
         }
 
         # gates in circuit
@@ -756,18 +761,18 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
             FourQReadoutCircs.ZIZI2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_c0q2x],
             FourQReadoutCircs.ZZII2.value: [gate_c1q2x, gate_c0q1x],
             FourQReadoutCircs.ZZZI2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_c1q2x, gate_c0q1x],
-            FourQReadoutCircs.IIIZ1.value: [],
-            FourQReadoutCircs.IIIZ2.value: [],
-            FourQReadoutCircs.IIZZ1.value: [],
-            FourQReadoutCircs.IIZZ2.value: [],
-            FourQReadoutCircs.IZIZ2.value: [],
-            FourQReadoutCircs.IZZZ2.value: [],
-            FourQReadoutCircs.ZIIZ1.value: [],
-            FourQReadoutCircs.ZIIZ2.value: [],
-            FourQReadoutCircs.ZIZZ1.value: [],
-            FourQReadoutCircs.ZIZZ2.value: [],
-            FourQReadoutCircs.ZZIZ2.value: [],
-            FourQReadoutCircs.ZZZZ2.value: [],
+            FourQReadoutCircs.IIIZ1.value: [gate_crotq4x, gate_q1sx, gate_q4rzPihalf, gate_crotq4x, gate_q1sy],
+            FourQReadoutCircs.IIIZ2.value: [gate_crotq4x, gate_q1sx, gate_q4rzPihalf, gate_crotq4x, gate_q1sy, gate_c0q2x],
+            FourQReadoutCircs.IIZZ1.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_q1sy, gate_q4sx, gate_q4rzPihalf, gate_crotq4x, gate_q1sx],
+            FourQReadoutCircs.IIZZ2.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_q1sy, gate_q4sx, gate_q4rzPihalf, gate_crotq4x, gate_q1sx, gate_c0q2x],
+            FourQReadoutCircs.IZIZ2.value: [gate_crotq4x, gate_q1sx, gate_q4rzPihalf, gate_crotq4x, gate_q1sy, gate_c1q2x, gate_c0q1x],
+            FourQReadoutCircs.IZZZ2.value: [gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy, gate_q1sy, gate_q4sx, gate_q4rzPihalf, gate_crotq4x, gate_q1sx, gate_c1q2x, gate_c0q1x],
+            FourQReadoutCircs.ZIIZ1.value: [gate_q4sx, gate_q4rzPihalf, gate_q1sy, gate_crotq4x, gate_q1sx],
+            FourQReadoutCircs.ZIIZ2.value: [gate_q4sx, gate_q4rzPihalf, gate_q1sy, gate_crotq4x, gate_q1sx, gate_c0q2x],
+            FourQReadoutCircs.ZIZZ1.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q4sx, gate_q4rzPihalf, gate_q1sy, gate_crotq4x, gate_q1sx],
+            FourQReadoutCircs.ZIZZ2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q4sx, gate_q4rzPihalf, gate_q1sy, gate_crotq4x, gate_q1sx, gate_c0q2x],
+            FourQReadoutCircs.ZZIZ2.value: [gate_q4sx, gate_q4rzPihalf, gate_q1sy, gate_crotq4x, gate_q1sx, gate_c1q2x, gate_c0q1x],
+            FourQReadoutCircs.ZZZZ2.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx, gate_q4sx, gate_q4rzPihalf, gate_q1sy, gate_crotq4x, gate_q1sx, gate_c1q2x, gate_c0q1x],
         }
 
         # create pulse blocks from gates
