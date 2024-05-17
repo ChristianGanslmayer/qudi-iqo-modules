@@ -30,7 +30,7 @@ class xq1i:
         self.sequence_generator_logic = sequence_generator_logic
 
         self.calib_params = OrderedDict()
-        self.calib_params['res_freq'] = 1.4482e9
+        self.calib_params['res_freq'] = 1.4442e9
         self.calib_params['RF_freq0'] = 5.0962e6
         self.calib_params['RF_freq1'] = 2.9256e6
         self.calib_params['rabi_period_LowPower'] = 2.0e-6
@@ -225,9 +225,8 @@ class xq1i:
             print(f"performing calibration of QB1 ...")
 
             # Measure Qubit-1 transition frequency#
-            res_freq = 1.448466e9
-            self.generate_params['microwave_frequency'] = res_freq
-            self.pulsedODMR_params['freq_start'] = res_freq - 5.0e6
+            self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
+            self.pulsedODMR_params['freq_start'] = self.calib_params['res_freq'] - 5.0e6
             self.pulsedODMR_params['freq_step'] = 0.1e6
             self.pulsedODMR_sweeps = 80000
             self.do_pulsedODMR()
