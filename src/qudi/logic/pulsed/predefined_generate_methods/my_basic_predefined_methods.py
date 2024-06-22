@@ -1088,7 +1088,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_hahnecho_exp(self, name='hahn_echo', tau_start=1.0e-6, tau_end=1.0e-6,
-                              num_of_points=50, alternating=True):
+                              num_of_points=50, laser_on=20.0e-9, laser_off=60.0e-9, alternating=True):
         """
 
         """
@@ -1098,16 +1098,19 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # get tau array for measurement ticks
         if tau_start == 0.0:
-            tau_array = np.geomspace(1e-9, tau_end, num_of_points - 1)
-            tau_array = np.insert(tau_array, 0, 0.0)
+            tau_array = 2*np.geomspace(1e-9, tau_end, num_of_points - 1)
+            tau_array = 2*np.insert(tau_array, 0, 0.0)
         else:
-            tau_array = np.geomspace(tau_start, tau_end, num_of_points)
+            tau_array = 2*np.geomspace(tau_start, tau_end, num_of_points)
 
         # create the elements
         waiting_element = self._get_idle_element(length=self.wait_time,
                                                  increment=0)
-        laser_element = self._get_laser_element(length=self.laser_length,
-                                                     increment=0)
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
         delay_element = self._get_idle_element(length=self.laser_delay,
                                                  increment=0)
         pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
@@ -1143,7 +1146,8 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
             hahn_block.append(pi_element)
             hahn_block.append(tau_element)
             hahn_block.append(pihalf_element)
-            hahn_block.append(laser_element)
+            for i, laser_trig in enumerate(laser_block):
+                hahn_block.append(laser_trig)
             hahn_block.append(delay_element)
             hahn_block.append(waiting_element)
             if alternating:
@@ -1152,13 +1156,14 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
                 hahn_block.append(pi_element)
                 hahn_block.append(tau_element)
                 hahn_block.append(pi3half_element)
-                hahn_block.append(laser_element)
+                for i, laser_trig in enumerate(laser_block):
+                    hahn_block.append(laser_trig)
                 hahn_block.append(delay_element)
                 hahn_block.append(waiting_element)
         created_blocks.append(hahn_block)
 
         # Create block ensemble
-        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
         block_ensemble.append((hahn_block.name, 0))
 
         # Create and append sync trigger block if needed
