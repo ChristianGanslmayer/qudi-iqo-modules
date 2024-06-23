@@ -109,11 +109,11 @@ def gate_CeROTn():
 
 
 class xq1i:
-    POI_name = 'NV_011'
+    POI_name = 'Qubit_XQ1i'
     calibParamsFilePrefix = os.path.join('./', 'calib_params', 'calib_params_')
     measResFilePrefix = os.path.join('./', 'measurement_results', 'run_')
-    microwave_amplitude_LowPower = 0.001
-    microwave_amplitude_HighPower = 0.1
+    microwave_amplitude_LowPower = 0.003
+    microwave_amplitude_HighPower = 0.05
     nucrabi_RFfreq0_amp = 0.02
     nucrabi_RFfreq1_amp = 0.02
 
@@ -123,15 +123,15 @@ class xq1i:
         self.sequence_generator_logic = sequence_generator_logic
 
         self.calib_params = OrderedDict()
-        self.calib_params['res_freq'] = 1.4442e9
+        self.calib_params['res_freq'] = 1.4472e9
         self.calib_params['RF_freq0'] = 5.0962e6
         self.calib_params['RF_freq1'] = 2.9256e6
-        self.calib_params['rabi_period_LowPower'] = 2.0e-6
-        self.calib_params['rabi_period_HighPower'] = 33.0e-09
+        self.calib_params['rabi_period_LowPower'] = 2.4e-6
+        self.calib_params['rabi_period_HighPower'] = 170e-09
         self.calib_params['rabi_offset'] = 1.181
         self.calib_params['rabi_amplitude'] = 0.139
-        self.calib_params['nucrabi_RFfreq0_period'] = 72.46e-6
-        self.calib_params['nucrabi_RFfreq1_period'] = 73.53e-6
+        self.calib_params['nucrabi_RFfreq0_period'] = 160.46e-6
+        self.calib_params['nucrabi_RFfreq1_period'] = 160.53e-6
         self.loadCalibParams()
 
         self.generate_params = OrderedDict()
@@ -139,10 +139,11 @@ class xq1i:
         self.generate_params['sync_channel'] = 'd_ch2'
         self.generate_params['laser_length'] = 3.2e-06
         self.generate_params['laser_delay'] = 1.0e-9
-        self.generate_params['wait_time'] = 1.5e-06
-        self.generate_params['microwave_frequency'] = 1442.27e6
-        self.generate_params['microwave_amplitude'] = 0.1
-        self.generate_params['rabi_period'] = 30.50e-09
+        self.generate_params['wait_time'] = 70.5e-06
+        self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
+        self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
+        self.generate_params['rabi_period'] = 170.50e-09
+        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
         self.rabi_params = self.pulsed_master_logic.generate_method_params['rabi']
         self.rabi_params['name'] = 'rabi'
@@ -152,7 +153,7 @@ class xq1i:
         self.rabi_params['laser_off'] = 60.0e-9
         self.rabi_params['num_of_points'] = 50
         self.rabi_params['delay_time'] = 0.0e-6
-        self.rabi_sweeps = 100000
+        self.rabi_sweeps = 60000
 
         self.pulsedODMR_params = self.pulsed_master_logic.generate_method_params['pulsedodmr']
         self.pulsedODMR_params['name'] = 'pulsedODMR'
@@ -164,8 +165,8 @@ class xq1i:
         self.pulsedODMR_params['RF_freq'] = 2.94e6
         self.pulsedODMR_params['RF_amp'] = 0.00
         self.pulsedODMR_params['RF_pilen'] = 30.0e-6
-        self.pulsedODMR_params['num_of_points'] = 100
-        self.pulsedODMR_sweeps = 100000
+        self.pulsedODMR_params['num_of_points'] = 50
+        self.pulsedODMR_sweeps = 60000
 
         self.nucspect_params = self.pulsed_master_logic.generate_method_params['NucSpect']
         self.nucspect_params['name'] = 'nucspect'
@@ -177,7 +178,7 @@ class xq1i:
         self.nucspect_params['freq_start'] = 5.05e6
         self.nucspect_params['freq_step'] = 2.0e3
         self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
-        self.nucspect_params['spect_pi'] = 40000e-9
+        self.nucspect_params['spect_pi'] = 83000e-9
         self.nucspect_params['num_of_points'] = 50
         self.nucspect_params['laser_on'] = 20.0e-9
         self.nucspect_params['laser_off'] = 60.0e-9
@@ -193,7 +194,7 @@ class xq1i:
         self.nucrabi_params['Nuc_rabi_freq'] = 5.06e6
         self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq0_amp
         self.nucrabi_params['tau_start'] = 10.0e-9
-        self.nucrabi_params['tau_step'] = 8.0e-6
+        self.nucrabi_params['tau_step'] = 16.7e-6
         self.nucrabi_params['num_of_points'] = 25
         self.nucrabi_params['laser_on'] = 20.0e-9
         self.nucrabi_params['laser_off'] = 60.0e-9
@@ -263,10 +264,10 @@ class xq1i:
         self.QCQB123_params['cyclesf'] = 7
         self.QCQB123_params['DD_N'] = 8
         self.QCQB123_params['f1_uc'] = 0.95
-        self.QCQB123_params['tau_uc'] = 1608e-9
+        self.QCQB123_params['tau_uc'] = 1610e-9
         self.QCQB123_params['order_uc'] = 15
         self.QCQB123_params['f1_c'] = 0.9
-        self.QCQB123_params['tau_c'] = 804e-9
+        self.QCQB123_params['tau_c'] = 805e-9
         self.QCQB123_params['order_c'] = 8
         self.QCQB123_params['tau_z'] = 1.5325e-6
         self.QCQB123_params['order_z'] = 4
@@ -354,9 +355,8 @@ class xq1i:
 
             # Measure Qubit-1 transition frequency#
             self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
-            self.pulsedODMR_params['freq_start'] = self.calib_params['res_freq'] - 5.0e6
-            self.pulsedODMR_params['freq_step'] = 0.1e6
-            self.pulsedODMR_sweeps = 80000
+            self.pulsedODMR_params['freq_start'] = self.calib_params['res_freq'] - 2.5e6
+            self.pulsedODMR_params['freq_step'] = 0.2e6
             self.do_pulsedODMR()
             time.sleep(2)
             result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
@@ -364,7 +364,6 @@ class xq1i:
             time.sleep(2)
 
             # Measure Qubit-1 gate parameters#
-            self.rabi_sweeps = 80000
             self.do_rabi(isSlow=False)  # perform fast Rabi
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
             self.calib_params['rabi_period_HighPower'] = float(1 / (result_dict.params['frequency'].value))
@@ -374,7 +373,6 @@ class xq1i:
             time.sleep(2)
 
             # calibration of CnNOTe (if nuclear spin in state 0, electron spin is flipped)#
-            self.rabi_sweeps = 80000
             self.do_rabi(isSlow=True)  # perform slow Rabi
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
             self.calib_params['rabi_period_LowPower'] = float(1 / (result_dict.params['frequency'].value))
@@ -395,7 +393,6 @@ class xq1i:
             self.nucspect_params['NV_pi'] = False
             self.nucspect_params['freq_start'] = 5.05e6
             self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
-            self.nucspect_sweeps = 80000
             self.do_Nucspect()
             time.sleep(2)
             result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
@@ -404,7 +401,6 @@ class xq1i:
             # Measure Qubit-2 gate parameters m_s=0#
             self.nucrabi_params['NV_pi'] = False
             self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq0_amp
-            self.nucrabi_sweeps = 80000
             self.do_NucRabi()
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
             self.calib_params['nucrabi_RFfreq0_period'] = float(1 / (result_dict.params['frequency'].value))
@@ -413,7 +409,6 @@ class xq1i:
             self.nucspect_params['NV_pi'] = True
             self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq1_amp
             self.nucspect_params['freq_start'] = 2.90e6
-            self.nucspect_sweeps = 80000
             self.do_Nucspect()
             time.sleep(2)
             result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
@@ -422,7 +417,6 @@ class xq1i:
             # Measure Qubit-2 gate parameters m_s=1#
             self.nucrabi_params['NV_pi'] = True
             self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq1_amp
-            self.nucrabi_sweeps = 80000
             self.do_NucRabi()
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
             self.calib_params['nucrabi_RFfreq1_period'] = float(1 / (result_dict.params['frequency'].value))
@@ -525,7 +519,7 @@ class xq1i:
             self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
             self.pulsed_master_logic.set_generation_parameters(self.generate_params)
             self.rabi_params['tau_start'] = 0.0e-9
-            self.rabi_params['tau_step'] = 3.4e-9
+            self.rabi_params['tau_step'] = 17.0e-9
             self.rabi_params['delay_time'] = 50.0e-6
             self.rabi_params['num_of_points'] = 30
         else:
@@ -534,7 +528,7 @@ class xq1i:
             self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
             self.pulsed_master_logic.set_generation_parameters(self.generate_params)
             self.rabi_params['tau_start'] = 0.0e-9
-            self.rabi_params['tau_step'] = 190.0e-9
+            self.rabi_params['tau_step'] = 246.0e-9
             self.rabi_params['delay_time'] = 50.0e-6
             self.rabi_params['num_of_points'] = 30
 
@@ -569,6 +563,10 @@ class xq1i:
         self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
         self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_PODMR'
                                                +'_amp_'+str(round((self.generate_params['microwave_amplitude']),4))+'V', with_error=False)
+
+        self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
+        self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
+        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
 
     def do_Nucspect(self):

@@ -25,6 +25,7 @@ from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, Puls
 from qudi.logic.pulsed.pulse_objects import PredefinedGeneratorBase
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
 from qudi.util.helpers import csv_2_list
+from qudi.util.network import netobtain
 from enum import Enum
 
 class StateTomography(Enum):
@@ -5828,6 +5829,591 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
                 xy8_block.append(init)
             for i, zopr in enumerate(Z_list):
                 xy8_block.append(zopr)
+            xy8_block.append(pihalf_read1_element)
+            for i, init in enumerate(pihalfX_list):
+                xy8_block.append(init)
+            xy8_block.append(pihalf_read2_element)
+            xy8_block.append(self._get_mw_element(length=tau,
+                                                  increment=0.0e-9,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=0))
+            for i, laser_trig in enumerate(laser_block):
+                xy8_block.append(laser_trig)
+            xy8_block.append(delay_element)
+            xy8_block.append(waiting_element)
+
+        created_blocks.append(xy8_block)
+
+        # Create block ensemble
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((xy8_block.name, 0))
+
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # add metadata to invoke settings later on
+        if polariz:
+            number_of_lasers = (num_pol+1) * (num_of_points +1)
+            laser_list = [x for x in range(0, (num_pol+1) * (num_of_points+1), 1)]
+            ignore_list = [laser_list[i] for i in range(len(laser_list)) if i%(num_pol+1)!=num_pol]
+        else:
+            number_of_lasers = (num_of_points +1)
+            ignore_list = list()
+        block_ensemble.measurement_information['alternating'] = False
+        block_ensemble.measurement_information['laser_ignore_list'] = ignore_list
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_singleQB3ADDQPT4(self, name='SingleQB3ADDQPT4',NV_ms1=True, Init_state=SingleQubitStates.State0,
+                              Gate=SingleQubitGates.GateX, tau_condX=0.5e-6, pihalfX_order=4,
+                          tau_uncondZ=0.01e-6, pihalfZ_order=4, tau_uncond=20e-9, uncond_pi_order=6, f1_uc=1.0, cond_gate=True,
+                                 num_of_points=50, tau_step=271.5e-9,
+                         polariz=True, num_pol=2, readX=False, readY=False, readZ=True, laser_on=20.0e-9, laser_off=60.0e-9):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # get tau array for measurement ticks
+        tau_array = np.arange(num_of_points +1)*tau_step
+        # calculate "real" start length of tau due to finite pi-pulse length
+        state_value = Init_state.value
+        gate_value = Gate.value
+
+        # create the elements
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
+        delay_element =  self._get_idle_element(length=self.laser_delay, increment=0)
+
+        initpihalf_element = self._get_mw_element(length=self.rabi_period / 4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=90)
+
+        pihalfafterX_element = self._get_mw_element(length=self.rabi_period / 4,
+                                                    increment=0,
+                                                    amp=self.microwave_amplitude,
+                                                    freq=self.microwave_frequency,
+                                                    phase=0)
+        pihalf_read1_element = self._get_mw_element(length=self.rabi_period / 4,
+                                                   increment=0,
+                                                   amp=self.microwave_amplitude,
+                                                   freq=self.microwave_frequency,
+                                                   phase=0)
+        pihalf_read2_element = self._get_mw_element(length=self.rabi_period / 4,
+                                                    increment=0,
+                                                    amp=self.microwave_amplitude,
+                                                    freq=self.microwave_frequency,
+                                                    phase=90)
+
+        pix_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=0)
+        piy_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=90)
+
+
+        spacingsuc = self._get_axy_spacing(f1e=f1_uc, f2e=0, f3e=0, f4e=0)
+        # Determine a scale factor for each tau
+        tau_factorsuc = np.zeros(6, dtype='float64')
+        tau_factorsuc[0] = spacingsuc[0]
+        tau_factorsuc[1] = spacingsuc[1] - spacingsuc[0]
+        tau_factorsuc[2] = spacingsuc[2] - spacingsuc[1]
+        tau_factorsuc[3] = tau_factorsuc[2]
+        tau_factorsuc[4] = tau_factorsuc[1]
+        tau_factorsuc[5] = tau_factorsuc[0]
+
+        pihalf_element = self._get_mw_element(length=self.rabi_period/4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=0)
+        pix_0_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=0)
+        pix_30_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=30)
+        pix_90_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=90)
+        piy_0_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=90)
+        piy_30_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=120)
+        piy_90_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=180)
+
+        first_tauucx = self._get_idle_element(
+            length=1*tau_factorsuc[0] * 2 * tau_uncond - (self.rabi_period / 4), increment=0)
+        last_tauucx = self._get_idle_element(
+            length=1*tau_factorsuc[0] * 2 * tau_uncond - (self.rabi_period / 4), increment=0)
+        tau1ucx_raw_element = self._get_idle_element(length=tau_factorsuc[0] * 2 * tau_uncond, increment=0)
+        tau6ucx_raw_element = self._get_idle_element(length=tau_factorsuc[5] * 2 * tau_uncond, increment=0)
+        tau1ucx_element = self._get_idle_element(
+            length=tau_factorsuc[0] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau2ucx_element = self._get_idle_element(
+            length=tau_factorsuc[1] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau3ucx_element = self._get_idle_element(
+            length=tau_factorsuc[2] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau4ucx_element = self._get_idle_element(
+            length=tau_factorsuc[3] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau5ucx_element = self._get_idle_element(
+            length=tau_factorsuc[4] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau6ucx_element = self._get_idle_element(
+            length=tau_factorsuc[5] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+
+        tauhalfX_element = self._get_idle_element(length=tau_condX, increment=0)
+        tauX_element = self._get_idle_element(length=2 * tau_condX, increment=0)
+
+
+        tauhalfZ_element = self._get_idle_element(length=tau_uncondZ, increment=0)
+        tauZ_element = self._get_idle_element(length=2 * tau_uncondZ, increment=0)
+
+
+        NOOP_element = self._get_idle_element(length=0,
+                                              increment=0)
+        # Create block and append to created_blocks list
+        xy8_block = PulseBlock(name=name)
+        pihalfX_list = []
+
+        for n in range(1, pihalfX_order+1):
+            if n % 4 == 1:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+            if n % 4 == 2:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+            if n % 4 == 3:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
+            if n % 4 == 0:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
+
+
+        ucpihalfX_list = []
+        for n in range(1, int(uncond_pi_order/2) + 1):
+            if n % 2 !=0:
+                if n!=1:
+                    del ucpihalfX_list[len(ucpihalfX_list) - 1:len(ucpihalfX_list)]
+                    ucpihalfX_list.append(tau1ucx_raw_element)
+                if n == 1:
+                    ucpihalfX_list.append(first_tauucx)
+                else:
+                    ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau1ucx_raw_element)
+                # X
+                ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(last_tauucx)
+
+            else:
+                del ucpihalfX_list[len(ucpihalfX_list) - 1:len(ucpihalfX_list)]
+                ucpihalfX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # X
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # X
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(last_tauucx)
+
+        ucpiX_list = []
+        for n in range(1, (uncond_pi_order) + 1):
+            if n % 2 !=0:
+                if n!=1:
+                    del ucpiX_list[len(ucpiX_list) - 1:len(ucpiX_list)]
+                    ucpiX_list.append(tau1ucx_raw_element)
+                if n == 1:
+                    ucpiX_list.append(first_tauucx)
+                else:
+                    ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau1ucx_raw_element)
+                # X
+                ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(last_tauucx)
+
+            else:
+                del ucpiX_list[len(ucpiX_list) - 1:len(ucpiX_list)]
+                ucpiX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # X
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # X
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(last_tauucx)
+
+        Z_list = []
+
+        for m in range(1, pihalfZ_order + 1):
+            if m % 4 == 1:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+            if m % 4 == 2:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+            if m % 4 == 3:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+            if m % 4 == 0:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+
+
+
+        tau_array = (0.0e-9) + np.arange(num_of_points + 1) * (tau_step)
+        for tau in tau_array:
+            if polariz:
+                for n in range(1, num_pol+1):
+                    xy8_block.append(initpihalf_element)
+                    for i, init in enumerate(pihalfX_list):
+                        xy8_block.append(init)
+                    xy8_block.append(pihalfafterX_element)
+
+                    for i, zopr in enumerate(Z_list):
+                        xy8_block.append(zopr)
+
+                    for i, init in enumerate(pihalfX_list):
+                        xy8_block.append(init)
+
+                    for i, laser_trig in enumerate(laser_block):
+                        xy8_block.append(laser_trig)
+                    xy8_block.append(delay_element)
+                    xy8_block.append(waiting_element)
+
+            for i, pulse in enumerate(state_value):
+                if pulse == 'pix':
+                    for i, pulselist in enumerate(pihalfX_list):
+                        xy8_block.append(pulselist)
+                    for i, pulselist in enumerate(pihalfX_list):
+                        xy8_block.append(pulselist)
+                elif pulse == 'pihalfx':
+                    for i, pulselist in enumerate(pihalfX_list):
+                        xy8_block.append(pulselist)
+                elif pulse == 'pihalfy':
+                    for i, pulselist in enumerate(pihalfX_list):
+                        xy8_block.append(pulselist)
+                    for i, pulselist in enumerate(Z_list):
+                        xy8_block.append(pulselist)
+                elif pulse == 'NOOP':
+                    xy8_block.append(NOOP_element)
+
+            if NV_ms1:
+                xy8_block.append(pix_element)
+            for i, pulse in enumerate(gate_value):
+                if pulse == 'X':
+                    if cond_gate:
+                        for i, pulselist in enumerate(pihalfX_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(pihalfX_list):
+                            xy8_block.append(pulselist)
+                    else:
+                        for i, pulselist in enumerate(ucpiX_list):
+                            xy8_block.append(pulselist)
+                elif pulse == 'sqX':
+                    if cond_gate:
+                        for i, pulselist in enumerate(pihalfX_list):
+                            xy8_block.append(pulselist)
+                    else:
+                        for i, pulselist in enumerate(ucpihalfX_list):
+                            xy8_block.append(pulselist)
+                elif pulse == 'Y':
+                    if cond_gate:
+                        for i, pulselist in enumerate(ucpiX_list):
+                            xy8_block.append(pulselist)
+                    else:
+                        for i, pulselist in enumerate(ucpiX_list):
+                            xy8_block.append(pulselist)
+                elif pulse == 'Z':
+                    if cond_gate:
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+                    else:
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+
+                elif pulse == 'sqZ':
+                    if cond_gate:
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+
+                    else:
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+
+                elif pulse == 'H':
+                    if cond_gate:
+                        for i, pulselist in enumerate(pihalfX_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(pihalfX_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(pihalfX_list):
+                            xy8_block.append(pulselist)
+                    else:
+                        for i, pulselist in enumerate(ucpihalfX_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(Z_list):
+                            xy8_block.append(pulselist)
+                        for i, pulselist in enumerate(ucpiX_list):
+                            xy8_block.append(pulselist)
+                elif pulse == 'NOOP':
+                    xy8_block.append(NOOP_element)
+
+            if NV_ms1:
+                xy8_block.append(pix_element)
+
+            if readX:
+                ###order of x and z changed on 8.01 after the first full run
+                xy8_block.append(NOOP_element)
+            elif readY:
+                for i, zopr in enumerate(Z_list):
+                    xy8_block.append(zopr)
+            elif readZ:
+                for i, init in enumerate(pihalfX_list):
+                    xy8_block.append(init)
+                for i, zopr in enumerate(Z_list):
+                    xy8_block.append(zopr)
+
+
             xy8_block.append(pihalf_read1_element)
             for i, init in enumerate(pihalfX_list):
                 xy8_block.append(init)
@@ -22203,6 +22789,878 @@ class QubitControlPredefinedGenerator(PredefinedGeneratorBase):
                 pihalfX_list.append(tau2cx_element)
                 pihalfX_list.append(pix_30_element)
                 pihalfX_list.append(last_taucx)
+
+
+        ucpihalfX_list = []
+        for n in range(1, int(uncond_pi_order/2) + 1):
+            if n % 2 !=0:
+                if n!=1:
+                    del ucpihalfX_list[len(ucpihalfX_list) - 1:len(ucpihalfX_list)]
+                    ucpihalfX_list.append(tau1ucx_raw_element)
+                if n == 1:
+                    ucpihalfX_list.append(first_tauucx)
+                else:
+                    ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau1ucx_raw_element)
+                # X
+                ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(last_tauucx)
+
+            else:
+                del ucpihalfX_list[len(ucpihalfX_list) - 1:len(ucpihalfX_list)]
+                ucpihalfX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # X
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpihalfX_list.append(tau1ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(piy_90_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(piy_0_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(piy_30_element)
+                ucpihalfX_list.append(tau6ucx_raw_element)
+                # X
+                ucpihalfX_list.append(tau6ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(tau5ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau4ucx_element)
+                ucpihalfX_list.append(pix_90_element)
+                ucpihalfX_list.append(tau3ucx_element)
+                ucpihalfX_list.append(pix_0_element)
+                ucpihalfX_list.append(tau2ucx_element)
+                ucpihalfX_list.append(pix_30_element)
+                ucpihalfX_list.append(last_tauucx)
+
+        ucpiX_list = []
+        for n in range(1, (uncond_pi_order) + 1):
+            if n % 2 !=0:
+                if n!=1:
+                    del ucpiX_list[len(ucpiX_list) - 1:len(ucpiX_list)]
+                    ucpiX_list.append(tau1ucx_raw_element)
+                if n == 1:
+                    ucpiX_list.append(first_tauucx)
+                else:
+                    ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau1ucx_raw_element)
+                # X
+                ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(last_tauucx)
+
+            else:
+                del ucpiX_list[len(ucpiX_list) - 1:len(ucpiX_list)]
+                ucpiX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # X
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau1ucx_raw_element)
+                # Y
+                ucpiX_list.append(tau1ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(piy_90_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(piy_0_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(piy_30_element)
+                ucpiX_list.append(tau6ucx_raw_element)
+                # X
+                ucpiX_list.append(tau6ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(tau5ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau4ucx_element)
+                ucpiX_list.append(pix_90_element)
+                ucpiX_list.append(tau3ucx_element)
+                ucpiX_list.append(pix_0_element)
+                ucpiX_list.append(tau2ucx_element)
+                ucpiX_list.append(pix_30_element)
+                ucpiX_list.append(last_tauucx)
+
+        pihalfZ_list = []
+
+        for m in range(1, pihalfZ_order+1):
+            if m % 4 == 1:
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(pix_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(piy_element)
+                pihalfZ_list.append(tauhalfZ_element)
+            if m % 4 == 2:
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(pix_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(piy_element)
+                pihalfZ_list.append(tauhalfZ_element)
+            if m % 4 == 3:
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(piy_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(pix_element)
+                pihalfZ_list.append(tauhalfZ_element)
+            if m % 4 == 0:
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(piy_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(tauhalfZ_element)
+                pihalfZ_list.append(pix_element)
+                pihalfZ_list.append(tauhalfZ_element)
+
+        Z_list = []
+
+        for m in range(1, (2*pihalfZ_order)+1):
+            if m % 4 == 1:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+            if m % 4 == 2:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+            if m % 4 == 3:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+            if m % 4 == 0:
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(piy_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(tauhalfZ_element)
+                Z_list.append(pix_element)
+                Z_list.append(tauhalfZ_element)
+
+
+
+        init_block = []
+        for i, pulse in enumerate(state_value):
+            if pulse =='00':
+                init_block.append(NOOP_element)
+            elif pulse =='01':
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+            elif pulse =='0X':
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+            elif pulse =='0Y':
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfZ_list):
+                    init_block.append(init)
+
+            elif pulse =='10':
+                init_block.append(ucNVpix_element)
+            elif pulse =='11':
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                init_block.append(ucNVpix_element)
+            elif pulse =='1X':
+
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                init_block.append(ucNVpix_element)
+            elif pulse =='1Y':
+
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfZ_list):
+                    init_block.append(init)
+                init_block.append(ucNVpix_element)
+
+            elif pulse =='X0':
+                init_block.append(ucNVpihalfx_element)
+            elif pulse =='X1':
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                init_block.append(ucNVpihalfx_element)
+            elif pulse =='XX':
+
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                init_block.append(ucNVpihalfx_element)
+            elif pulse =='XY':
+
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfZ_list):
+                    init_block.append(init)
+                init_block.append(ucNVpihalfx_element)
+
+            elif pulse =='Y0':
+                init_block.append(ucNVpihalfy_element)
+            elif pulse =='Y1':
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                init_block.append(ucNVpihalfy_element)
+            elif pulse =='YX':
+
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                init_block.append(ucNVpihalfy_element)
+            elif pulse =='YY':
+
+                for i, init in enumerate(pihalfX_list):
+                    init_block.append(init)
+                for i, init in enumerate(pihalfZ_list):
+                    init_block.append(init)
+                init_block.append(ucNVpihalfy_element)
+
+        gate_block = []
+        for i, gate in enumerate(gate_value):
+            if gate == 'CeROTn2':
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+            if gate == 'CeNOTn':
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+                for i, gate in enumerate(ucpihalfX_list):
+                    gate_block.append(gate)
+            if gate == 'CeROTn2_2':
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+            if gate == 'CeROTn2_3':
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+
+            if gate == 'CeROTn2_4':
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+                for i, gate in enumerate(pihalfX_list):
+                    gate_block.append(gate)
+            else:
+                gate_block.append(self._get_idle_element(length=0.0e-9, increment=0))
+
+
+        pulseq_list = []
+
+        tau_array = (0.0e-9) + np.arange(num_of_points + 1) * (tau_step)
+        for tau in tau_array:
+            if polariz:
+                for n in range(1, num_pol + 1):
+                    xy8_block.append(initpihalf_element)
+                    for i, init in enumerate(pihalfX_list):
+                        xy8_block.append(init)
+                    xy8_block.append(pihalfafterX_element)
+                    for i, zopr in enumerate(pihalfZ_list):
+                        xy8_block.append(zopr)
+                    for i, init in enumerate(pihalfX_list):
+                        xy8_block.append(init)
+
+                    for i, laser_trig in enumerate(laser_block):
+                        xy8_block.append(laser_trig)
+                    xy8_block.append(delay_element)
+                    xy8_block.append(waiting_element)
+
+
+
+            for i, init_pulse in enumerate(init_block):
+                xy8_block.append(init_pulse)
+            if NV_ms1:
+                xy8_block.append(pix_element)
+            for i, gate_pulse in enumerate(gate_block):
+                xy8_block.append(gate_pulse)
+            if NV_ms1:
+                xy8_block.append(pix_element)
+
+            if read_value == ['IX']:
+                ###order of x and z changed on 8.01 after the first full run
+                for i, read in enumerate(pihalfZ_list):
+                    xy8_block.append(read)
+                for i, read in enumerate(ucpihalfX_list):
+                    xy8_block.append(read)
+                for i, init in enumerate(pihalfX_list):
+                    xy8_block.append(init)
+                for i, zopr in enumerate(pihalfZ_list):
+                    xy8_block.append(zopr)
+                xy8_block.append(pihalf_read1_element)
+                for i, init in enumerate(pihalfX_list):
+                    xy8_block.append(init)
+                xy8_block.append(pihalf_read2_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+            if read_value == ['IY']:
+                for i, read in enumerate(ucpihalfX_list):
+                    xy8_block.append(read)
+                for i, init in enumerate(pihalfX_list):
+                    xy8_block.append(init)
+                for i, zopr in enumerate(pihalfZ_list):
+                    xy8_block.append(zopr)
+                xy8_block.append(pihalf_read1_element)
+                for i, init in enumerate(pihalfX_list):
+                    xy8_block.append(init)
+                xy8_block.append(pihalf_read2_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+            if read_value == ['IZ']:
+                xy8_block.append(NOOP_element)
+                for i, init in enumerate(pihalfX_list):
+                    xy8_block.append(init)
+                for i, zopr in enumerate(pihalfZ_list):
+                    xy8_block.append(zopr)
+                xy8_block.append(pihalf_read1_element)
+                for i, init in enumerate(pihalfX_list):
+                    xy8_block.append(init)
+                xy8_block.append(pihalf_read2_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['YI']:
+                xy8_block.append(ucNVpihalfx_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+
+            if read_value == ['XI']:
+                xy8_block.append(ucNVpihalfy_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['ZI']:
+                xy8_block.append(NOOP_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['ZX']:
+                xy8_block.append(ucNVpihalfy_element)
+                xy8_block.append(NOOP_element)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfx_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['ZY']:
+                xy8_block.append(ucNVpihalfy_element)
+                for i, pulselist in enumerate(pihalfZ_list):
+                    xy8_block.append(pulselist)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfx_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['ZZ']:
+                xy8_block.append(ucNVpihalfy_element)
+                for i, pulselist in enumerate(ucpihalfX_list):
+                    xy8_block.append(pulselist)
+                for i, pulselist in enumerate(pihalfZ_list):
+                    xy8_block.append(pulselist)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfx_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['XX']:
+                xy8_block.append(NOOP_element)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfx_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['XY']:
+                for i, pulselist in enumerate(pihalfZ_list):
+                    xy8_block.append(pulselist)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfx_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['XZ']:
+                for i, pulselist in enumerate(ucpihalfX_list):
+                    xy8_block.append(pulselist)
+                for i, pulselist in enumerate(pihalfZ_list):
+                    xy8_block.append(pulselist)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfx_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['YX']:
+                xy8_block.append(NOOP_element)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfy_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['YY']:
+                for i, pulselist in enumerate(pihalfZ_list):
+                    xy8_block.append(pulselist)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfy_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+            if read_value == ['YZ']:
+                for i, pulselist in enumerate(ucpihalfX_list):
+                    xy8_block.append(pulselist)
+                for i, pulselist in enumerate(pihalfZ_list):
+                    xy8_block.append(pulselist)
+                for i, readcnot in enumerate(pihalfX_list):
+                    xy8_block.append(readcnot)
+                xy8_block.append(ucNVpihalfy_element)
+                xy8_block.append(self._get_mw_element(length=tau,
+                                                      increment=0.0e-9,
+                                                      amp=cNV_amp,
+                                                      freq=cNV_freq,
+                                                      phase=0))
+
+
+            for i, laser_trig in enumerate(laser_block):
+                xy8_block.append(laser_trig)
+            xy8_block.append(delay_element)
+            xy8_block.append(waiting_element)
+
+
+
+
+
+        created_blocks.append(xy8_block)
+
+        # Create block ensemble
+        tau_array = (0.0e-9) + np.arange(num_of_points + 1) * (tau_step)
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((xy8_block.name, 0))
+
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # add metadata to invoke settings later on
+        if polariz:
+            number_of_lasers = (num_pol+1) * (num_of_points +1)
+            laser_list = [x for x in range(0, (num_pol+1) * (num_of_points+1), 1)]
+            ignore_list = [laser_list[i] for i in range(len(laser_list)) if i%(num_pol+1)!=num_pol]
+        else:
+            number_of_lasers = (num_of_points +1)
+            ignore_list = list()
+        block_ensemble.measurement_information['alternating'] = False
+        block_ensemble.measurement_information['laser_ignore_list'] = ignore_list
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_TQQB13ADDQPT4(self, name='TQQB13ADDQPT4',NV_ms1=True, Init_state=TQQPTstates.State00,
+                              Gate=Gates.NOOP, tau_condX=0.5e-6, pihalfX_order=4,
+                          tau_uncondZ=0.01e-6, pihalfZ_order=4, tau_uncond=20e-9, uncond_pi_order=6, f1_uc=1.0, num_of_points=50, multiplicity=1,
+                             cNV_freq=1444.0e6, cNV_amp=0.001, cNV_pi=2.4e-6, tau_step=20.0e-9,
+                         polariz=True, num_pol=1,  Read_state=TQQPTReadstates.ReadXI, laser_on=20.0e-9, laser_off=60.0e-9):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # get tau array for measurement ticks
+
+        # calculate "real" start length of tau due to finite pi-pulse length
+        state_value = Init_state.value
+        gate_value = Gate.value
+        read_value = Read_state.value
+        print(read_value)
+        read_value = netobtain(read_value)
+        print(read_value)
+
+        # create the elements
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
+        delay_element =  self._get_idle_element(length=self.laser_delay, increment=0)
+
+        initpihalf_element = self._get_mw_element(length=self.rabi_period / 4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=90)
+        pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
+                                                  increment=0,
+                                                  amp=self.microwave_amplitude,
+                                                  freq=self.microwave_frequency,
+                                                  phase=0)
+
+        pihalfafterX_element = self._get_mw_element(length=self.rabi_period / 4,
+                                                    increment=0,
+                                                    amp=self.microwave_amplitude,
+                                                    freq=self.microwave_frequency,
+                                                    phase=0)
+        pihalf_read1_element = self._get_mw_element(length=self.rabi_period / 4,
+                                                   increment=0,
+                                                   amp=self.microwave_amplitude,
+                                                   freq=self.microwave_frequency,
+                                                   phase=0)
+        pihalf_read2_element = self._get_mw_element(length=self.rabi_period / 4,
+                                                    increment=0,
+                                                    amp=self.microwave_amplitude,
+                                                    freq=self.microwave_frequency,
+                                                    phase=90)
+
+        pix_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=0)
+        piy_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=90)
+
+        ucNVpix_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=0)
+        ucNVpiy_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=90)
+
+        ucNVpihalfx_element = self._get_mw_element(length=self.rabi_period / 4,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=0)
+        ucNVpihalfy_element = self._get_mw_element(length=self.rabi_period / 4,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=90)
+
+        tauhalfX_element = self._get_idle_element(length=tau_condX, increment=0)
+        tauX_element = self._get_idle_element(length=2 * tau_condX, increment=0)
+
+        tauhalfZ_element = self._get_idle_element(length=tau_uncondZ, increment=0)
+        tauZ_element = self._get_idle_element(length=2 * tau_uncondZ, increment=0)
+
+        tau_element = self._get_idle_element(length=tau_uncond, increment=0)
+        NOOP_element = self._get_idle_element(length=0,
+                                              increment=0)
+
+
+        spacingsuc = self._get_axy_spacing(f1e=f1_uc, f2e=0, f3e=0, f4e=0)
+        # Determine a scale factor for each tau
+        tau_factorsuc = np.zeros(6, dtype='float64')
+        tau_factorsuc[0] = spacingsuc[0]
+        tau_factorsuc[1] = spacingsuc[1] - spacingsuc[0]
+        tau_factorsuc[2] = spacingsuc[2] - spacingsuc[1]
+        tau_factorsuc[3] = tau_factorsuc[2]
+        tau_factorsuc[4] = tau_factorsuc[1]
+        tau_factorsuc[5] = tau_factorsuc[0]
+
+
+        pihalf_element = self._get_mw_element(length=self.rabi_period/4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=0)
+        pix_0_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=0)
+        pix_30_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=30)
+        pix_90_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=90)
+        piy_0_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=90)
+        piy_30_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=120)
+        piy_90_element = self._get_mw_element(length=self.rabi_period/2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=180)
+
+
+        first_tauucx = self._get_idle_element(
+            length=1*tau_factorsuc[0] * 2 * tau_uncond - (self.rabi_period / 4), increment=0)
+        last_tauucx = self._get_idle_element(
+            length=1*tau_factorsuc[0] * 2 * tau_uncond - (self.rabi_period / 4), increment=0)
+        tau1ucx_raw_element = self._get_idle_element(length=tau_factorsuc[0] * 2 * tau_uncond, increment=0)
+        tau6ucx_raw_element = self._get_idle_element(length=tau_factorsuc[5] * 2 * tau_uncond, increment=0)
+        tau1ucx_element = self._get_idle_element(
+            length=tau_factorsuc[0] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau2ucx_element = self._get_idle_element(
+            length=tau_factorsuc[1] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau3ucx_element = self._get_idle_element(
+            length=tau_factorsuc[2] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau4ucx_element = self._get_idle_element(
+            length=tau_factorsuc[3] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau5ucx_element = self._get_idle_element(
+            length=tau_factorsuc[4] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+        tau6ucx_element = self._get_idle_element(
+            length=tau_factorsuc[5] * 2 * tau_uncond - (self.rabi_period / 2), increment=0)
+
+
+        tauhalfZ_element = self._get_idle_element(length=tau_uncondZ, increment=0)
+        tauZ_element = self._get_idle_element(length=2 * tau_uncondZ, increment=0)
+
+
+        NOOP_element = self._get_idle_element(length=0,
+                                              increment=0)
+        # Create block and append to created_blocks list
+        xy8_block = PulseBlock(name=name)
+        pihalfX_list = []
+
+        for n in range(1, pihalfX_order+1):
+            if n % 4 == 1:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+            if n % 4 == 2:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+            if n % 4 == 3:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
+            if n % 4 == 0:
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(piy_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(tauhalfX_element)
+                pihalfX_list.append(pix_element)
+                pihalfX_list.append(tauhalfX_element)
 
 
         ucpihalfX_list = []
