@@ -265,7 +265,6 @@ class xq1i:
             time.sleep(2)
 
             # calibration of CnNOTe (if nuclear spin in state 0, electron spin is flipped)#
-            self.rabi_sweeps = 80000
             self.do_rabi(isSlow=True)  # perform slow Rabi
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
             self.calib_params['rabi_period_LowPower'] = float(1 / (result_dict.params['frequency'].value))
@@ -286,7 +285,6 @@ class xq1i:
             self.nucspect_params['NV_pi'] = False
             self.nucspect_params['freq_start'] = 5.05e6
             self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
-            self.nucspect_sweeps = 80000
             self.do_Nucspect()
             time.sleep(2)
             result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
@@ -295,7 +293,6 @@ class xq1i:
             # Measure Qubit-2 gate parameters m_s=0#
             self.nucrabi_params['NV_pi'] = False
             self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq0_amp
-            self.nucrabi_sweeps = 80000
             self.do_NucRabi()
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
             self.calib_params['nucrabi_RFfreq0_period'] = float(1 / (result_dict.params['frequency'].value))
@@ -304,7 +301,6 @@ class xq1i:
             self.nucspect_params['NV_pi'] = True
             self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq1_amp
             self.nucspect_params['freq_start'] = 2.90e6
-            self.nucspect_sweeps = 80000
             self.do_Nucspect()
             time.sleep(2)
             result_dict = self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
@@ -313,7 +309,6 @@ class xq1i:
             # Measure Qubit-2 gate parameters m_s=1#
             self.nucrabi_params['NV_pi'] = True
             self.nucrabi_params['Nuc_rabi_amp'] = self.nucrabi_RFfreq1_amp
-            self.nucrabi_sweeps = 80000
             self.do_NucRabi()
             result_dict = self.pulsed_measurement_logic.do_fit('Sine')
             self.calib_params['nucrabi_RFfreq1_period'] = float(1 / (result_dict.params['frequency'].value))
