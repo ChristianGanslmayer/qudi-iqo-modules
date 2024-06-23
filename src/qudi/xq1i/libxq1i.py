@@ -229,6 +229,19 @@ class xq1i:
         self.axy8_params['laser_off'] = 60.0e-9
         self.axy8_sweeps = 20e3
 
+        self.xy8_params = self.pulsed_master_logic.generate_method_params['xy8_tau']
+        self.xy8_params['name'] = 'xy8_tau'
+        self.xy8_params['tau_start'] = 0.5e-6
+        self.xy8_params['tau_step'] =  10.0e-9
+        self.xy8_params['num_of_points'] = 50
+        self.xy8_params['xy8_order'] = 4
+        self.xy8_params['Init_phase'] = 90
+        self.xy8_params['Read_phase'] = 90
+        self.xy8_params['laser_on'] = 20.0e-9
+        self.xy8_params['laser_off'] = 60.0e-9
+        self.xy8_params['alternating'] = True
+        self.xy8_sweeps = 30e3
+
         self.QCQB12_params = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB12']
         self.QCQB12_params['name'] = 'quantumcircuitQB12'
         self.QCQB12_params['NV_Cpi_amp'] = self.microwave_amplitude_LowPower
@@ -242,19 +255,19 @@ class xq1i:
         self.QCQB12_sweeps = 20e3
 
         self.QCQSTQB13_params = self.pulsed_master_logic.generate_method_params['QuantumCircuitQstQB13']
-        self.QCQSTQB13_params['name'] = 'quantumcircuitQstQB123'
+        self.QCQSTQB13_params['name'] = 'quantumcircuitQstQB13'
         self.QCQSTQB13_params['f1_uc'] = 0.95
-        self.QCQSTQB13_params['tau_uc'] = 1608e-9
+        self.QCQSTQB13_params['tau_uc'] = 1602.5e-9
         self.QCQSTQB13_params['order_uc'] = 15
         self.QCQSTQB13_params['f1_c'] = 0.9
-        self.QCQSTQB13_params['tau_c'] = 804e-9
-        self.QCQSTQB13_params['order_c'] = 8
-        self.QCQSTQB13_params['tau_z'] = 1.5325e-6
+        self.QCQSTQB13_params['tau_c'] = 2*354.95e-9
+        self.QCQSTQB13_params['order_c'] = 6
+        self.QCQSTQB13_params['tau_z'] = 2*734.86e-9
         self.QCQSTQB13_params['order_z'] = 4
         self.QCQSTQB13_params['num_of_points'] = 20
         self.QCQSTQB13_params['laser_on'] = 20.0e-9
         self.QCQSTQB13_params['laser_off'] = 60.0e-9
-        self.QCQSTQB13_sweeps = 20e3
+        self.QCQSTQB13_sweeps = 60e3
 
         self.QCQB123_params = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB123']
         self.QCQB123_params['name'] = 'quantumcircuitQB123'
@@ -425,9 +438,13 @@ class xq1i:
 
             if type == 'full':
                 # DDRF transition frequency measurement
+                self.DDrfspect_params['freq'] = self.calib_params['RF_freq0']
+                self.DDrfspect_params['RF_amp'] = 0.020
+                self.DDrfspect_params['cyclesf'] = 4
+                self.DDrfspect_params['DD_order'] = 10
                 outfile = open("./14N_Calibration/DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq']), "w")
                 DDRFamplist = []
-                freqls = np.arange(170e3, 250e3, 2e3).tolist()
+                freqls = np.arange(2900e3, 3000e3, 2e3).tolist()
                 for freq in freqls:
                     self.DDrfspect_params['RF_freq'] = freq
                     self.DDrfspect_sweeps = 20000
@@ -456,7 +473,8 @@ class xq1i:
     def qb3_calibration(self):
         try:
             print(f"performing calibration of QB3 ...")
-            self.do_AXY8_Spect()
+            #self.do_AXY8_Spect()
+            self.do_XY8_Spect()
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
             print('\033[91m' + 'WARNING: User interrupt of QB3 calibration, measurement sequence stopped.' + '\033[0m')
@@ -465,6 +483,34 @@ class xq1i:
     def qb4_calibration(self):
         try:
             print(f"performing calibration of QB4 ...")
+
+            # DDRF transition frequency measurement
+            self.DDrfspect_params['freq'] = 544.1e3
+            self.DDrfspect_params['RF_amp'] = 0.020
+            self.DDrfspect_params['cyclesf'] = 4
+            self.DDrfspect_params['DD_order'] = 10
+            outfile = open(self.calibParamsFilePrefix + "QB4_DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq']), "w")
+            DDRFamplist = []
+            freqls = np.arange(170e3, 250e3, 2e3).tolist()
+            for freq in freqls:
+                self.DDrfspect_params['RF_freq'] = freq
+                self.DDrfspect_sweeps = 20000
+                self.do_DDrf_Spect()
+                result_dict = self.pulsed_measurement_logic.do_fit('Sine_Fixed_Freq_360')
+                amplitude = float(result_dict.params['amplitude'].value)
+                DDRFamplist.append([freq, amplitude])
+                outfile.write("{:.15f}\t{:.15f}\n".format(freq, amplitude))
+                outfile.flush()
+                time.sleep(2)
+            outfile.close()
+            fig = plt.figure()
+            ax = plt.axes()
+            ax.set_title('DDRF calibration')
+            ax.set_xlabel('frequency in Hz')
+            ax.set_ylabel('amplitude')
+            DDRFampArray = np.array(DDRFamplist)
+            ax.plot(DDRFampArray[:, 0], DDRFampArray[:, 1])
+            plt.show()
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
             print('\033[91m' + 'WARNING: User interrupt of QB4 calibration, measurement sequence stopped.' + '\033[0m')
@@ -602,8 +648,6 @@ class xq1i:
 
 
     def do_DDrf_Spect(self):
-        #self.DDrfspect_params['freq'] = self.calib_params['RF_freq0']
-        self.DDrfspect_params['freq'] = 544.1e3
         self.sequence_generator_logic.delete_ensemble('ddrf_spect')
         self.sequence_generator_logic.delete_block('ddrf_spect')
         self.pulsed_master_logic.generate_predefined_sequence('DDrf_Spect', self.DDrfspect_params)
@@ -623,10 +667,22 @@ class xq1i:
         self.sequence_generator_logic.delete_block('axy8')
         self.pulsed_master_logic.generate_predefined_sequence('AXY', self.axy8_params)
 
-        self._executePulsedMeasurement('axy8', self.DDrfspect_sweeps)
+        self._executePulsedMeasurement('axy8', self.axy8_sweeps)
         self.pulsed_measurement_logic.do_fit('Lorentzian Peak')
         self.pulsed_master_logic.save_measurement_data(tag = self.POI_name +
                                                 + f'_AXY8_order_{self.axy8_params["xy8_order"]}_f1_{self.axy8_params["f1"]:.2f}'
+                                                ,with_error=False)
+
+
+    def do_XY8_Spect(self):
+        self.sequence_generator_logic.delete_ensemble('xy8_tau')
+        self.sequence_generator_logic.delete_block('xy8_tau')
+        self.pulsed_master_logic.generate_predefined_sequence('xy8_tau', self.xy8_params)
+
+        self._executePulsedMeasurement('xy8_tau', self.xy8_sweeps)
+        self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks')
+        self.pulsed_master_logic.save_measurement_data(tag = self.POI_name +
+                                                + f'_XY8_order_{self.xy8_params["xy8_order"]}'
                                                 ,with_error=False)
 
 
@@ -663,9 +719,9 @@ class xq1i:
         self.QCQSTQB13_params['Initial_state'] = initState
         self.QCQSTQB13_params['Readout_circ'] = readoutCirc
         self.QCQSTQB13_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB13])
-        self.sequence_generator_logic.delete_ensemble('quantumcircuitQB123')
-        self.sequence_generator_logic.delete_block('quantumcircuitQB123')
-        self.pulsed_master_logic.generate_predefined_sequence('QuantumCircuitQB123', self.QCQB123_params)
+        self.sequence_generator_logic.delete_ensemble('quantumcircuitQstQB13')
+        self.sequence_generator_logic.delete_block('quantumcircuitQstQB13')
+        self.pulsed_master_logic.generate_predefined_sequence('QuantumCircuitQstQB13', self.QCQSTQB13_params)
 
         self._executePulsedMeasurement('quantumcircuitQstQB13', self.QCQSTQB13_sweeps)
         time.sleep(1)

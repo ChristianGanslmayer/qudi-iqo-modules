@@ -209,7 +209,8 @@ class xq1iGate(PredefinedGeneratorBase):
                                                      # rot_phase=accumRotZAng) )
             case 'crotx':
                 if self.qubit == 3:
-                    pulse = self._axy8_pulse_block(QC_params['order_c'], QC_params['tau_c'], QC_params['f1_c'])
+                    #pulse = self._axy8_pulse_block(QC_params['order_c'], QC_params['tau_c'], QC_params['f1_c'])
+                    pulse = self._xy8_pulse_block( QC_params['order_c'], QC_params['tau_c']/2 )
                 elif self.qubit == 4:
                     pulse = []
         return pulse
