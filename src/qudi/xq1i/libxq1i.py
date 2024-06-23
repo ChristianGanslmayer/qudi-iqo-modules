@@ -7,12 +7,105 @@ import numpy as np
 from scipy import optimize
 import matplotlib.pyplot as plt
 from tqdm.notebook import tqdm
+from qutip import *
+from qutip_qip.circuit import QubitCircuit, Gate
+from qudi.util.network import netobtain
 from qudi.logic.pulsed.predefined_generate_methods.qb1234_control_methods import xq1iGate
-from qudi.logic.pulsed.predefined_generate_methods.qb1234_control_methods import TQstates, TQReadoutCircs, ThrQstates, ThrQReadoutCircs, FourQstates, FourQReadoutCircs
+from qudi.logic.pulsed.predefined_generate_methods.qb1234_control_methods import TQstates, TQReadoutCircs, TQQSTReadoutCircs, ThrQstates, ThrQReadoutCircs, FourQstates, FourQReadoutCircs
 
 
-def covertNetrefToNumpyArray(data):
-    return np.array([float(_) for _ in data])
+# def covertNetrefToNumpyArray(data):
+#     return np.array([float(_) for _ in data])
+
+def likelihoodFunc(tParams, *nuMeasured):
+    nuRhoPhys = measExpVal( rhoP(tParams) )
+    costFuncVal = np.sum( (nuRhoPhys - nuMeasured)**2 / (2*nuRhoPhys) )
+    return costFuncVal
+
+def measExpVal(rho):
+    expVal = np.zeros(16)
+    basisSetOneQb = [qeye(2), sigmax(), sigmay(), sigmaz()]
+    basisSetTwoQb = [tensor(op1, op2) for op1 in basisSetOneQb for op2 in basisSetOneQb]
+    for i,op in enumerate(basisSetTwoQb):
+        expVal[i] = 0.5*(expect(op, rho) + 1)
+    return expVal
+
+def rhoP(tParams):
+    tMat = qdiags(
+        [ tParams[0:4],
+          [tParams[4]+1j*tParams[5], tParams[6]+1j*tParams[7], tParams[8]+1j*tParams[9]],
+          [tParams[10]+1j*tParams[11], tParams[12]+1j*tParams[13]],
+          [tParams[14]+1j*tParams[15]]
+        ],
+        [0,-1,-2,-3],
+        dims=[[2,2], [2,2]]
+    )
+    tMatProd = tMat.dag()*tMat
+    if isNonZero(tMatProd.tr()):
+        return tMatProd / tMatProd.tr()
+    else:
+        return tMatProd
+
+def tParamsOfRho(rho):
+    tParams = np.zeros(16)
+    det = np.linalg.det(rho.full())
+    minFirst11 = matMinor(rho,0,0)
+    minSecond1122 = matMinor(rho,[0,1],[0,1])
+    #print(det, minFirst11, minSecond1122)
+    # t_1
+    if isNonZero(minFirst11):
+        tParams[0] = np.sqrt( np.abs(det/minFirst11) )
+    # t_2
+    if isNonZero(minSecond1122):
+        tParams[1] = np.sqrt( np.abs(minFirst11/minSecond1122) )
+    # t_3
+    if isNonZero(rho[3,3]):
+        tParams[2] = np.sqrt( np.abs(minSecond1122/rho[3,3]) )
+    # t_4
+    tParams[3] = np.sqrt( np.abs(rho[3,3]) )
+    # t_5, t_6
+    if isNonZero(minFirst11*minSecond1122):
+        tmp = matMinor(rho,0,1)/np.sqrt(minFirst11*minSecond1122)
+        tParams[4] = np.real(tmp)
+        tParams[5] = np.imag(tmp)
+    # t_7, t_8
+    if isNonZero(rho[3,3]*minSecond1122):
+        tmp = matMinor(rho,[0,1],[0,2])/np.sqrt(rho[3,3]*minSecond1122)
+        tParams[6] = np.real(tmp)
+        tParams[7] = np.imag(tmp)
+    # t_9, t_10
+    if isNonZero(rho[3,3]):
+        tParams[8] = np.real( rho[3,2]/np.sqrt(rho[3,3]) )
+        tParams[9] = np.imag( rho[3,2]/np.sqrt(rho[3,3]) )
+    # t_11, t_12
+    if isNonZero(rho[3,3]*minSecond1122):
+        tmp = matMinor(rho,[0,1],[1,2])/np.sqrt(rho[3,3]*minSecond1122)
+        tParams[10] = np.real(tmp)
+        tParams[11] = np.imag(tmp)
+    # t_13, t_14
+    if isNonZero(rho[3,3]):
+        tParams[12] = np.real( rho[3,1]/np.sqrt(rho[3,3]) )
+        tParams[13] = np.imag( rho[3,1]/np.sqrt(rho[3,3]) )
+    # t_15, t_16
+    if isNonZero(rho[3,3]):
+        tParams[14] = np.real( rho[3,0]/np.sqrt(rho[3,3]) )
+        tParams[15] = np.imag( rho[3,0]/np.sqrt(rho[3,3]) )
+    return tParams
+
+def isNonZero(val):
+    return abs(val) > 1e-15
+
+def matMinor(mat, rowInds, colInds):
+    return( np.linalg.det( np.delete(np.delete(mat.full(), rowInds, axis=0), colInds, axis=1) ) )
+
+def gate_CeROTn():
+    qcGateStash = QubitCircuit(N=1)
+    qcGateStash.add_gate("RX", targets=0, arg_value=3*np.pi/2)
+    qcGateStash.add_gate("RX", targets=0, arg_value=np.pi/2)
+    qcGateStash.add_gate("RX", targets=0, arg_value=-np.pi / 2)
+    # controlled ROT gate, DD
+    return ( tensor(basis(2,0)*basis(2,0).dag(), qcGateStash.propagators()[1]) +
+             tensor(basis(2,1)*basis(2,1).dag(), qcGateStash.propagators()[2]) )
 
 
 class xq1i:
@@ -146,6 +239,21 @@ class xq1i:
         self.QCQB12_params['laser_on'] = 20.0e-9
         self.QCQB12_params['laser_off'] = 60.0e-9
         self.QCQB12_sweeps = 20e3
+
+        self.QCQSTQB13_params = self.pulsed_master_logic.generate_method_params['QuantumCircuitQstQB13']
+        self.QCQSTQB13_params['name'] = 'quantumcircuitQstQB123'
+        self.QCQSTQB13_params['f1_uc'] = 0.95
+        self.QCQSTQB13_params['tau_uc'] = 1608e-9
+        self.QCQSTQB13_params['order_uc'] = 15
+        self.QCQSTQB13_params['f1_c'] = 0.9
+        self.QCQSTQB13_params['tau_c'] = 804e-9
+        self.QCQSTQB13_params['order_c'] = 8
+        self.QCQSTQB13_params['tau_z'] = 1.5325e-6
+        self.QCQSTQB13_params['order_z'] = 4
+        self.QCQSTQB13_params['num_of_points'] = 20
+        self.QCQSTQB13_params['laser_on'] = 20.0e-9
+        self.QCQSTQB13_params['laser_off'] = 60.0e-9
+        self.QCQSTQB13_sweeps = 20e3
 
         self.QCQB123_params = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB123']
         self.QCQB123_params['name'] = 'quantumcircuitQB123'
@@ -552,6 +660,28 @@ class xq1i:
         self.QCQB12_params['Readout_circ'] = None
 
 
+    def do_QuantumCircuitQstQB13(self, qcQB13, initState=TQstates.State00, readoutCirc=TQQSTReadoutCircs.IX, sweeps=100e3):
+        self.QCQSTQB13_sweeps = sweeps
+        self.QCQSTQB13_params['Initial_state'] = initState
+        self.QCQSTQB13_params['Readout_circ'] = readoutCirc
+        self.QCQSTQB13_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB13])
+        self.sequence_generator_logic.delete_ensemble('quantumcircuitQB123')
+        self.sequence_generator_logic.delete_block('quantumcircuitQB123')
+        self.pulsed_master_logic.generate_predefined_sequence('QuantumCircuitQB123', self.QCQB123_params)
+
+        self._executePulsedMeasurement('quantumcircuitQstQB13', self.QCQSTQB13_sweeps)
+        time.sleep(1)
+        self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + '_QCQSTQB13_'
+                                                + '_Initstate_' + self.QCQSTQB13_params['Initial_state'].name
+                                                + '_Readcirc_' + self.QCQSTQB13_params['Readout_circ'].name + '_'
+                                                + '_'.join([f"{gate.name}QB{gate.qubit}" for gate in qcQB13]),
+                                                with_error=True)
+        # workaround to prevent exception in yaml-dump of status variables during qudi shutdown
+        # (cannot handle enum type behind an rpyc-netref, exception raised in "represent_undefined" in ruamel/yaml/representer.py)
+        self.QCQSTQB13_params['Initial_state'] = None
+        self.QCQSTQB13_params['Readout_circ'] = None
+
+
     def do_QuantumCircuitQB123(self, qcQB123, initState=ThrQstates.State000, readoutCirc=ThrQReadoutCircs.IZI1, sweeps=100e3):
         self.QCQB123_sweeps = sweeps
         self.QCQB123_params['NV_Cpi_len'] = self.calib_params['rabi_period_LowPower']/2
@@ -629,18 +759,18 @@ class xq1i:
             for ind, readoutCirc in enumerate(readoutCircs):
                 print(f"running readout circuit {ind+1} of {len(readoutCircs)} ...")
                 circFunc(ciruit, initState=initState, readoutCirc=readoutCirc, sweeps=sweeps)
-                tData = covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[0])
-                sigData = self.getPopulationFromCounts(
-                    covertNetrefToNumpyArray(self.pulsed_measurement_logic.signal_data[1]))
-                errData = covertNetrefToNumpyArray(self.pulsed_measurement_logic.measurement_error[1]) / (
+                tData = netobtain (self.pulsed_measurement_logic.signal_data[0])
+                sigData = self.getPopulationFromCounts( netobtain(self.pulsed_measurement_logic.signal_data[1]) )
+                errData = netobtain(self.pulsed_measurement_logic.measurement_error[1]) / (
                             2 * self.calib_params['rabi_amplitude'])
                 result_dict = self.pulsed_measurement_logic.do_fit('Sine')
                 tFit, sigFit = self.getFitFromNormalizedCounts(tData, sigData)
                 expectation_values[readoutCirc.value] = sigFit[0]
-                plt.figure(figsize=(7, 1.5))
-                plt.errorbar(tData, sigData, yerr=errData, fmt='o')
-                plt.plot(tFit, sigFit)
+                plt.figure(figsize=(5, 1.2))
+                plt.errorbar(tData, sigData, yerr=errData, fmt='o', markersize=4)
+                plt.plot(tFit, sigFit, color='tab:blue')
                 plt.grid()
+                plt.yticks([0, 0.5, 1.0])
                 plt.ylim([-0.3, 1.3])
                 plt.title(f'measurement data for readout circuit {ind+1}', fontsize=10)
                 plt.ylabel('norm. counts')
@@ -686,6 +816,84 @@ class xq1i:
             print('\033[91m' + 'WARNING: User interrupt of circuit execution, measurement sequence stopped.' + '\033[0m')
 
 
+    def run_quantum_circuit_qst(self, ciruit, initState=TQstates.State00, sweeps=100e3):
+        try:
+            expectation_values = {}
+            for ind, readoutCirc in enumerate(TQQSTReadoutCircs):
+                print(f"running readout circuit {ind + 1} of {len(TQQSTReadoutCircs)} ...")
+                self.do_QuantumCircuitQstQB13(ciruit, initState=initState, readoutCirc=readoutCirc, sweeps=sweeps)
+                tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
+                sigData = self.getPopulationFromCounts( netobtain(self.pulsed_measurement_logic.signal_data[1]) )
+                errData = netobtain(self.pulsed_measurement_logic.measurement_error[1]) / (
+                        2 * self.calib_params['rabi_amplitude'])
+                result_dict = self.pulsed_measurement_logic.do_fit('Sine')
+                tFit, sigFit = self.getFitFromNormalizedCounts(tData, sigData, type='no14N')
+                expectation_values[readoutCirc.value] = sigFit[0]
+                # if readoutCirc.name in ['ZI', 'ZZ']:
+                #     expectation_values[readoutCirc.value] = 0.9
+                # elif readoutCirc.name in ['IZ']:
+                #     expectation_values[readoutCirc.value] = 0.1
+                # else:
+                #     expectation_values[readoutCirc.value] = 0.5 + np.random.rand()/10
+                plt.figure(figsize=(5, 1.2))
+                plt.errorbar(tData, sigData, yerr=errData, fmt='o', markersize=4)
+                plt.plot(tFit, sigFit, color='tab:blue')
+                plt.grid()
+                plt.yticks([0, 0.5, 1.0])
+                plt.ylim([-0.3, 1.3])
+                plt.title(f'measurement data for readout circuit {readoutCirc.name}', fontsize=10)
+                plt.ylabel('norm. counts')
+                plt.xlabel('Rabi driving time (s)')
+                plt.show()
+
+            rho,rhoPhys = self.calcTQDensMat(expectation_values)
+            psiInit = tensor(Qobj([[1],[-1j]])/np.sqrt(2), Qobj([[1],[-1j]])/np.sqrt(2))
+            rhoTheory = (gate_CeROTn()*psiInit) * (gate_CeROTn()*psiInit).dag()
+            fidTheoryPhys = metrics.fidelity(rhoTheory, rhoPhys) * 100
+            self.saveMeasurementResult([{ 'sweeps': sweeps, 'real': np.real(rhoPhys.full()).tolist(), 'imag': np.imag(rhoPhys.full()).tolist() }])
+
+            tickLabels = ["00", "01", "10", "11"]
+            x = np.arange(0.25, rho.shape[0])
+            y = np.arange(0.25, rho.shape[1])
+            xx, yy = np.meshgrid(x, y, indexing='ij')
+            boxDelta = 0.05
+            fig = plt.figure(figsize=(10, 7))
+            ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+            ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+            for ax, rho, rhoTh in zip([ax1, ax2], [np.real(rhoPhys.full()), np.imag(rhoPhys.full())],
+                                      [np.real(rhoTheory.full()), np.imag(rhoTheory.full())]):
+                for k in range(len(xx.ravel())):
+                    ax.bar3d(xx.ravel()[k], yy.ravel()[k], np.zeros_like(xx.ravel())[k], 0.5, 0.5, rho.ravel()[k],
+                             color='tab:blue', alpha=1, zorder=1000)
+                    ax.bar3d(xx.ravel()[k] - boxDelta, yy.ravel()[k] - boxDelta, np.zeros_like(xx.ravel())[k],
+                             0.5 + 2 * boxDelta, 0.5 + 2 * boxDelta, rhoTh.ravel()[k],
+                             edgecolor='black', linewidth=1.2, alpha=0)
+                ax.view_init(elev=20, azim=-35, roll=0)
+                ax.set_box_aspect((4, 4, 4), zoom=0.8)
+                ax.set_xlim([0, rho.shape[0]])
+                ax.set_ylim([0, rho.shape[0]])
+                ax.set_zlim([-0.6, 1.0])
+                ax.set_xticks(np.arange(0.5, rho.shape[0]), tickLabels)
+                ax.set_yticks(np.arange(0.5, rho.shape[0]), tickLabels)
+                ax.set_zticks(np.arange(-0.6, 1.0, 0.3))
+                ax.set_xlabel(r"$m$")
+                ax.set_ylabel(r"$n$")
+                ax1.set_zlabel(r"$\mathrm{Re}(\rho_{mn})$")
+                ax2.set_zlabel(r"$\mathrm{Im}(\rho_{mn})$")
+            fig.suptitle( rf"measurement outcome after {len(TQQSTReadoutCircs)} x {sweeps:,.0f} runs, "
+                          rf"$F(\rho_\mathrm{{th}}, \rho_\mathrm{{ph}})=${fidTheoryPhys:.1f}%",
+                          fontsize=10, y=0.72)
+            plt.savefig(xq1i.measResFilePrefix + f"{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                        bbox_inches='tight')
+            plt.show()
+        except KeyboardInterrupt:
+            self._interruptPulsedMeasurement()
+            self.QCQSTQB13_params['Initial_state'] = None
+            self.QCQSTQB13_params['Readout_circ'] = None
+            plt.close()
+            print('\033[91m' + 'WARNING: User interrupt of circuit execution, measurement sequence stopped.' + '\033[0m')
+
+
     def gate(self, name, qubit=0, param=0):
         return xq1iGate(self.sequence_generator_logic, name=name, qubit=qubit, param=param)
 
@@ -694,18 +902,25 @@ class xq1i:
         return (counts - (self.calib_params['rabi_offset']-self.calib_params['rabi_amplitude'])) / (2*self.calib_params['rabi_amplitude'])
 
 
-    def getFitFromNormalizedCounts(self, tData, sigData):
+    def getFitFromNormalizedCounts(self, tData, sigData, type='standard'):
         p0 = [ np.average(sigData), (sigData.max()-sigData.min())/2, 45 ]
-        fit_func = lambda t, *p: p[0] + p[1]*np.cos( 2*np.pi/self.calib_params['rabi_period_LowPower']*t + np.pi*p[2]/180 )
+        period = self.calib_params['rabi_period_HighPower'] if type=='no14N' else self.calib_params['rabi_period_LowPower']
+        fit_func = lambda t, *p: p[0] + p[1]*np.cos( 2*np.pi/period*t + np.pi*p[2]/180 )
         fitparams, fitparams_covariance = optimize.curve_fit(fit_func, tData, sigData, p0=p0, maxfev=1000)
-        if fitparams[0] > 0.5:
-            fitparams[0] = 0.5
-        elif fitparams[0] < 0:
-            fitparams[0] = 0
-        if abs(fitparams[1]) > 0.5:
-            fitparams[1] = np.sign(fitparams[1])*0.5
-        if abs(fitparams[1]) > fitparams[0]:
-            fitparams[0] = abs(fitparams[1])
+        match type:
+            case 'no14N':
+                fitparams[0] = 0.5
+                if abs(fitparams[1]) > 0.5:
+                    fitparams[1] = np.sign(fitparams[1]) * 0.5
+            case _:
+                if fitparams[0] > 0.5:
+                    fitparams[0] = 0.5
+                elif fitparams[0] < 0:
+                    fitparams[0] = 0
+                if abs(fitparams[1]) > 0.5:
+                    fitparams[1] = np.sign(fitparams[1])*0.5
+                if abs(fitparams[1]) > fitparams[0]:
+                    fitparams[0] = abs(fitparams[1])
         tFit = np.linspace(0, tData[-1], 100)
         sigFit = fit_func(tFit, *fitparams)
         return tFit,sigFit
@@ -725,6 +940,34 @@ class xq1i:
         for op,expval in zip(basisTwo[1:],expect_vals):
             populations += expval*op / 4
         return populations
+
+
+    def calcTQDensMat(self, vals):
+        readOutDict = {"II": 1,
+                       "IX": -1,
+                       "IY": -1,
+                       "IZ": -1,
+                       "XI": -1,
+                       "XX": 1,
+                       "XY": -1,
+                       "XZ": 1,
+                       "YI": 1,
+                       "YX": 1,
+                       "YY": -1,
+                       "YZ": 1,
+                       "ZI": 1,
+                       "ZX": 1,
+                       "ZY": -1,
+                       "ZZ": 1,
+                       }
+        basisSetOneQb = [qeye(2), sigmax(), sigmay(), sigmaz()]
+        basisSetTwoQb = [tensor(op1, op2) for op1 in basisSetOneQb for op2 in basisSetOneQb]
+        rho = basisSetTwoQb[0]/4
+        for readOut,op in zip(TQQSTReadoutCircs, basisSetTwoQb[1:]):
+            rho += readOutDict[readOut.name]*(2*vals[readOut.value]-1)/4 * op
+        optimizerResult = optimize.minimize( likelihoodFunc, tParamsOfRho(rho), args=measExpVal(rho) )
+        rhoPhys = rhoP(optimizerResult.x)
+        return rho,rhoPhys
 
 
     def calcThrQPopulations(self, vals):
@@ -753,21 +996,21 @@ class xq1i:
         basisOne = [id_diag, z_diag]
         basisFour = [ np.kron(op1, np.kron(op2, np.kron(op3, op4))) for op1 in basisOne for op2 in basisOne for op3 in basisOne for op4 in basisOne ]
         expect_vals = [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
+            -2*( vals[FourQReadoutCircs.IIIZ1.value] + vals[FourQReadoutCircs.IIIZ2.value] ) + 1,
+            -2*( vals[FourQReadoutCircs.IIZI1.value] + vals[FourQReadoutCircs.IIZI2.value] ) + 1,
+            -2*( vals[FourQReadoutCircs.IIZZ1.value] + vals[FourQReadoutCircs.IIZZ2.value] ) + 1,
+             2*( vals[FourQReadoutCircs.IZII1.value] + vals[FourQReadoutCircs.IZII2.value] ) - 1,
+            -2*( vals[FourQReadoutCircs.IIIZ1.value] + vals[FourQReadoutCircs.IZIZ2.value] ) + 1,
+            -2*( vals[FourQReadoutCircs.IIZI1.value] + vals[FourQReadoutCircs.IZZI2.value] ) + 1,
+            -2*( vals[FourQReadoutCircs.IIZZ1.value] + vals[FourQReadoutCircs.IZZZ2.value] ) + 1,
+             2*( vals[FourQReadoutCircs.IZII1.value] + vals[FourQReadoutCircs.ZIII2.value] ) - 1,
+             2*( vals[FourQReadoutCircs.ZIIZ1.value] + vals[FourQReadoutCircs.ZIIZ2.value] ) - 1,
+             2*( vals[FourQReadoutCircs.ZIZI1.value] + vals[FourQReadoutCircs.ZIZI2.value] ) - 1,
+             2*( vals[FourQReadoutCircs.ZIZZ1.value] + vals[FourQReadoutCircs.ZIZZ2.value] ) - 1,
+             2*( vals[FourQReadoutCircs.IZII1.value] + vals[FourQReadoutCircs.ZZII2.value] ) - 1,
+             2*( vals[FourQReadoutCircs.ZIIZ1.value] + vals[FourQReadoutCircs.ZZIZ2.value] ) - 1,
+             2*( vals[FourQReadoutCircs.ZIZI1.value] + vals[FourQReadoutCircs.ZZZI2.value] ) - 1,
+             2*( vals[FourQReadoutCircs.ZIZZ1.value] + vals[FourQReadoutCircs.ZZZZ2.value] ) - 1,
         ]
         populations = np.ones( len(FourQstates), dtype=np.float64 ) / 16
         for op,expval in zip(basisFour[1:],expect_vals):

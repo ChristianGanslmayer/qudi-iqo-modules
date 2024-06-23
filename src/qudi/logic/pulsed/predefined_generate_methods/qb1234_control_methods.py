@@ -39,6 +39,23 @@ class TQReadoutCircs(Enum):
     P01 = 2
     P10 = 3
 
+class TQQSTReadoutCircs(Enum):
+    IX = 1
+    IY = 2
+    IZ = 3
+    XI = 4
+    XX = 5
+    XY = 6
+    XZ = 7
+    YI = 8
+    YX = 9
+    YY = 10
+    YZ = 11
+    ZI = 12
+    ZX = 13
+    ZY = 14
+    ZZ = 15
+
 
 class ThrQstates(Enum):
     State000 = '000'
@@ -443,13 +460,14 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
         #gate_q2sx = xq1iGate(self._sgl, name="sx", qubit=2)
 
         gate_list = []
-        regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
-        for gate in gate_operations.replace(" ", "").split(","):
-            regex_match = regex_pattern.match(gate)
-            gate_name = regex_match.group(1)
-            param = float(regex_match.group(2))
-            qubit = int(regex_match.group(3))
-            gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
+        if not gate_operations == "":
+            regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
+            for gate in gate_operations.replace(" ", "").split(","):
+                regex_match = regex_pattern.match(gate)
+                gate_name = regex_match.group(1)
+                param = float(regex_match.group(2))
+                qubit = int(regex_match.group(3))
+                gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
 
         # create blocks for initialization
         initialblock_list=[]
@@ -564,6 +582,118 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
 
+    def generate_QuantumCircuitQstQB13(self, name='quantumcircuitQstQB13',
+                                    Initial_state=TQstates.State00, Readout_circ=TQQSTReadoutCircs.IX,
+                                    f1_uc=1.0, tau_uc=0.8e-6, order_uc=8,
+                                    f1_c=1.0, tau_c=0.8e-6, order_c=8,
+                                    tau_z=0.8e-6, order_z = 8,
+                                    gate_operations = "sx(0)[1], rz(90)[3], sx(0)[3]",
+                                    num_of_points=50,
+                                    laser_on=20.0e-9, laser_off=60.0e-9):
+        """
+
+        """
+        for methodParams in self._sgl.generate_method_params.values():
+            if methodParams['name'] == name:
+                QCQSTQB13_params = methodParams
+                break
+
+        gate_p00 = xq1iGate(self._sgl, name='p00')
+        gate_q1sx = xq1iGate(self._sgl, name="sx", qubit=1)
+        gate_q1sy = xq1iGate(self._sgl, name="sy", qubit=1)
+        gate_q3sx = xq1iGate(self._sgl, name="sx", qubit=3)
+        gate_q3rzPihalf = xq1iGate(self._sgl, name="rz", qubit=3, param=90)
+        gate_crotq3x = xq1iGate(self._sgl, name="crotx", qubit=3)
+
+        # gates for initialization
+        qb3_init_block = [gate_q1sy, gate_crotq3x, gate_q1sx, gate_q3rzPihalf, gate_crotq3x, gate_p00]
+        init_gates = {
+            TQstates.State00.value: qb3_init_block,
+            TQstates.State01.value: qb3_init_block + 2*[gate_crotq3x],
+            TQstates.State10.value: qb3_init_block + 2*[gate_q1sx],
+            TQstates.State11.value: qb3_init_block + 2*[gate_crotq3x] + 2*[gate_q1sx],
+        }
+
+        gate_list = []
+        if not gate_operations == "":
+            regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
+            for gate in gate_operations.replace(" ", "").split(","):
+                regex_match = regex_pattern.match(gate)
+                gate_name = regex_match.group(1)
+                param = float(regex_match.group(2))
+                qubit = int(regex_match.group(3))
+                gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
+
+        # gates for readout
+        readout_gates = {
+            TQQSTReadoutCircs.IX.value: [gate_q3rzPihalf, gate_q3sx, gate_crotq3x, gate_q3rzPihalf, gate_q1sx, gate_crotq3x, gate_q1sy],
+            TQQSTReadoutCircs.IY.value: [gate_q3sx, gate_crotq3x, gate_q3rzPihalf, gate_q1sx, gate_crotq3x, gate_q1sy],
+            TQQSTReadoutCircs.IZ.value: [gate_crotq3x, gate_q3rzPihalf, gate_q1sx, gate_crotq3x, gate_q1sy],
+            TQQSTReadoutCircs.XI.value: [gate_q1sy],
+            TQQSTReadoutCircs.XX.value: [gate_crotq3x, gate_q1sx],
+            TQQSTReadoutCircs.XY.value: [gate_q3rzPihalf, gate_crotq3x, gate_q1sx],
+            TQQSTReadoutCircs.XZ.value: [gate_q3sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sx],
+            TQQSTReadoutCircs.YI.value: [gate_q1sx],
+            TQQSTReadoutCircs.YX.value: [gate_crotq3x, gate_q1sy],
+            TQQSTReadoutCircs.YY.value: [gate_q3rzPihalf, gate_crotq3x, gate_q1sy],
+            TQQSTReadoutCircs.YZ.value: [gate_q3sx, gate_q3rzPihalf, gate_crotq3x, gate_q1sy],
+            TQQSTReadoutCircs.ZI.value: [],
+            TQQSTReadoutCircs.ZX.value: [gate_q1sy, gate_crotq3x, gate_q1sx],
+            TQQSTReadoutCircs.ZY.value: [gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx],
+            TQQSTReadoutCircs.ZZ.value: [gate_q3sx, gate_q3rzPihalf, gate_q1sy, gate_crotq3x, gate_q1sx]
+        }
+
+        # create pulse blocks from gates
+        opersblock_list=[]
+        accum_rotZAng = [0, 0, 0]
+        for gate in init_gates[Initial_state.value] + gate_list + readout_gates[Readout_circ.value]:
+            if gate.name == 'rz':
+                accum_rotZAng[gate.qubit-1] += gate.param
+            opersblock_list += gate.get_pulse(QCQSTQB13_params, accum_rotZAng[gate.qubit-1])
+
+        # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
+        statetomo_block = PulseBlock(name=name)
+
+        # readout of the fluorescence rate corresponding to a single Readout_circ (population transfer to 00 and subsequent Rabi driving)
+        for pulse in opersblock_list:
+            statetomo_block.append(pulse)
+        tau_step = self.rabi_period / 13
+        statetomo_block.append(self._get_mw_element(length=0, increment=tau_step,
+                                                    amp=self.microwave_amplitude, freq=self.microwave_frequency,
+                                                    phase=accum_rotZAng[0])
+                               )
+        for laser_elem in gate_p00.get_pulse(QCQSTQB13_params):
+            statetomo_block.append(laser_elem)
+
+        # Create block ensemble
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+        created_blocks.append(statetomo_block)
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((statetomo_block.name, num_of_points-1))
+
+        # Create and append sync trigger block if needed
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # get tau array for measurement ticks
+        tau_array = np.arange(num_of_points) * tau_step
+        # add metadata to invoke settings later on
+        number_of_lasers = 2*num_of_points
+        block_ensemble.measurement_information['alternating'] = False
+        # ignore the laser pulses used for resetting the NV after QB3 init
+        block_ensemble.measurement_information['laser_ignore_list'] = [_ for _ in range(0, number_of_lasers, 2)]
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+                            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+
     def generate_QuantumCircuitQB123(self, name='quantumcircuitQB123',
                                     Initial_state=ThrQstates.State000, Readout_circ=ThrQReadoutCircs.IZI1,
                                     NV_Cpi_len=1.0e-6, NV_Cpi_amp=0.05, NV_Cpi_freq1=1.432e9,
@@ -608,13 +738,14 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
 
         # gates in circuit
         gate_list = []
-        regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
-        for gate in gate_operations.replace(" ", "").split(","):
-            regex_match = regex_pattern.match(gate)
-            gate_name = regex_match.group(1)
-            param = float(regex_match.group(2))
-            qubit = int(regex_match.group(3))
-            gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
+        if not gate_operations == "":
+            regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
+            for gate in gate_operations.replace(" ", "").split(","):
+                regex_match = regex_pattern.match(gate)
+                gate_name = regex_match.group(1)
+                param = float(regex_match.group(2))
+                qubit = int(regex_match.group(3))
+                gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
 
         # gates for readout
         readout_gates = {
@@ -741,13 +872,14 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
 
         # gates in circuit
         gate_list = []
-        regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
-        for gate in gate_operations.replace(" ", "").split(","):
-            regex_match = regex_pattern.match(gate)
-            gate_name = regex_match.group(1)
-            param = float(regex_match.group(2))
-            qubit = int(regex_match.group(3))
-            gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
+        if not gate_operations == "":
+            regex_pattern = re.compile("([^(]*)\(([0-9\.eE\+\-]*)\)\[([0-9]*)\]")
+            for gate in gate_operations.replace(" ", "").split(","):
+                regex_match = regex_pattern.match(gate)
+                gate_name = regex_match.group(1)
+                param = float(regex_match.group(2))
+                qubit = int(regex_match.group(3))
+                gate_list.append( xq1iGate(self._sgl, name=gate_name, qubit=qubit, param=param) )
 
         # gates for readout
         readout_gates = {
