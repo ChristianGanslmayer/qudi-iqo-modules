@@ -92,6 +92,37 @@ def tParamsOfRho(rho):
         tParams[15] = np.imag( rho[3,0]/np.sqrt(rho[3,3]) )
     return tParams
 
+def likelihoodFuncPopul(tParams, *nuMeasured):
+    nuPopulPhys = measExpValPopul( populP(tParams) )
+    #costFuncVal = np.sum( (nuPopulPhys - nuMeasured)**2 / (2*nuPopulPhys) )
+    costFuncVal = np.sum((nuPopulPhys - nuMeasured) ** 2)
+    return costFuncVal
+
+def measExpValPopul(populations):
+    basisOne = [ np.array([1.0, 1.0]), np.array([1.0, -1.0]) ]
+    basisNQ = basisOne
+    for n in range(1, int( np.log2(len(populations)) )):
+        basisTemp = basisNQ
+        basisNQ = []
+        for op1 in basisTemp:
+            for op2 in basisOne:
+                basisNQ.append(np.kron(op1, op2))
+    expVal = np.zeros_like(populations)
+    for i,op in enumerate(basisNQ):
+        expVal[i] = 0.5 * (np.dot(op,populations) + 1)
+    return expVal
+
+def populP(tParams):
+    normFact = np.sum(tParams**2)
+    if isNonZero(normFact):
+        return tParams**2 / normFact
+    else:
+        return np.ones_like(tParams) / len(tParams)
+
+def tParamsOfPopul(populations):
+    tParams = [np.sqrt(p) if p > 0 else 0 for p in populations]
+    return tParams
+
 def isNonZero(val):
     return abs(val) > 1e-15
 
@@ -832,11 +863,15 @@ class xq1i:
                 plt.show()
 
             populations = populFunc(expectation_values)
-            self.saveMeasurementResult([{'sweeps': sweeps}, populations.tolist()])
+            optimizerResult = optimize.minimize(likelihoodFuncPopul,
+                                                tParamsOfPopul(populations),
+                                                args=measExpValPopul(populations))
+            populationsPhys = populP(optimizerResult.x)
+            self.saveMeasurementResult([{'sweeps': sweeps}, populationsPhys.tolist()])
 
-            fig = plt.figure(figsize=(len(populations), 5))
-            plt.bar( np.arange(1, len(populations)+1), populations, width=0.6)
-            fig.axes[0].set_xticks( np.arange(1, len(populations)+1) )
+            fig = plt.figure(figsize=(len(populationsPhys), 5))
+            plt.bar( np.arange(1, len(populationsPhys)+1), populationsPhys, width=0.6)
+            fig.axes[0].set_xticks( np.arange(1, len(populationsPhys)+1) )
             fig.axes[0].set_xticklabels( [state.value for state in basisStates] )
             plt.grid(axis='y')
             plt.ylim((-0.05, 1.05))
@@ -900,7 +935,7 @@ class xq1i:
                 plt.xlabel('Rabi driving time (s)')
                 plt.show()
 
-            rho,rhoPhys = self.calcTQDensMat(expectation_values)
+            rhoPhys = self.calcTQDensMat(expectation_values)
             psiInit = tensor(Qobj([[1],[-1j]])/np.sqrt(2), Qobj([[1],[-1j]])/np.sqrt(2))
             rhoTheory = (gate_CeROTn()*psiInit) * (gate_CeROTn()*psiInit).dag()
             fidTheoryPhys = metrics.fidelity(rhoTheory, rhoPhys) * 100
@@ -1021,7 +1056,7 @@ class xq1i:
             rho += readOutDict[readOut.name]*(2*vals[readOut.value]-1)/4 * op
         optimizerResult = optimize.minimize( likelihoodFunc, tParamsOfRho(rho), args=measExpVal(rho) )
         rhoPhys = rhoP(optimizerResult.x)
-        return rho,rhoPhys
+        return rhoPhys
 
 
     def calcThrQPopulations(self, vals):
