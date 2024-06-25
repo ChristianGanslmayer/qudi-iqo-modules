@@ -178,11 +178,11 @@ class xq1i:
         self.nucspect_params['freq_start'] = 5.05e6
         self.nucspect_params['freq_step'] = 2.0e3
         self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
-        self.nucspect_params['spect_pi'] = 83000e-9
+        self.nucspect_params['spect_pi'] = 86000e-9
         self.nucspect_params['num_of_points'] = 50
         self.nucspect_params['laser_on'] = 20.0e-9
         self.nucspect_params['laser_off'] = 60.0e-9
-        self.nucspect_sweeps = 100000
+        self.nucspect_sweeps = 60000
 
         self.nucrabi_params = self.pulsed_master_logic.generate_method_params['NucRabi']
         self.nucrabi_params['name'] = 'nucrabi'
@@ -198,7 +198,7 @@ class xq1i:
         self.nucrabi_params['num_of_points'] = 25
         self.nucrabi_params['laser_on'] = 20.0e-9
         self.nucrabi_params['laser_off'] = 60.0e-9
-        self.nucrabi_sweeps = 100000
+        self.nucrabi_sweeps = 60000
 
         self.DDrfspect_params = self.pulsed_master_logic.generate_method_params['DDrf_Spect']
         self.DDrfspect_params['name'] = 'ddrf_spect'
@@ -368,7 +368,7 @@ class xq1i:
 
             # Measure Qubit-1 transition frequency#
             self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
-            self.pulsedODMR_params['freq_start'] = self.calib_params['res_freq'] - 2.5e6
+            self.pulsedODMR_params['freq_start'] = self.calib_params['res_freq'] - 5.0e6
             self.pulsedODMR_params['freq_step'] = 0.2e6
             self.do_pulsedODMR()
             time.sleep(2)
