@@ -688,6 +688,7 @@ class xq1i:
                     (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
                   )
         plt.figure(figsize=(7, 1.5))
+        plt.plot(tData, sigData, linewidth=0.5)
         plt.scatter(tData, sigData, s=10)
         #plt.plot(tFit, sigFit, color='tab:blue')
         plt.grid()
@@ -721,6 +722,7 @@ class xq1i:
                     (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
                   )
         plt.figure(figsize=(7, 1.5))
+        plt.plot(tData, sigData, linewidth=0.5)
         plt.scatter(tData, sigData, s=10)
         #plt.plot(tFit, sigFit, color='tab:blue')
         plt.grid()
@@ -796,7 +798,7 @@ class xq1i:
         self.sequence_generator_logic.delete_block('xy8_tau')
         self.pulsed_master_logic.generate_predefined_sequence('xy8_tau', self.xy8_params)
 
-        #self._executePulsedMeasurement('xy8_tau', self.xy8_sweeps)
+        self._executePulsedMeasurement('xy8_tau', self.xy8_sweeps)
         #self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks')
         self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + f'_XY8_order_{self.xy8_params["xy8_order"]}'
                                                 ,with_error=False)
@@ -807,6 +809,7 @@ class xq1i:
                     (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
                   )
         plt.figure(figsize=(7, 1.5))
+        plt.plot(tData, sigData, linewidth=0.5)
         plt.scatter(tData, sigData, s=10)
         #plt.plot(tFit, sigFit, color='tab:blue')
         plt.grid()
@@ -924,6 +927,7 @@ class xq1i:
 
     def run_quantum_circuit(self, ciruit, initState=TQstates.State00, sweeps=100e3):
         try:
+            isQB13 = False
             if isinstance(initState, FourQstates):
                 basisStates = FourQstates
                 readoutCircs = FourQReadoutCircs
@@ -935,10 +939,19 @@ class xq1i:
                 circFunc = self.do_QuantumCircuitQB123
                 populFunc = self.calcThrQPopulations
             else:
+                for gate in ciruit:
+                    if gate.qubit == 3:
+                        isQB13 = True
+                        break
                 basisStates = TQstates
-                readoutCircs = TQReadoutCircs
-                circFunc = self.do_QuantumCircuitQB12
-                populFunc = self.calcTQPopulations
+                if not isQB13:
+                    readoutCircs = TQReadoutCircs
+                    circFunc = self.do_QuantumCircuitQB12
+                    populFunc = self.calcTQPopulations
+                else:
+                    readoutCircs = [TQQSTReadoutCircs.IZ, TQQSTReadoutCircs.ZI, TQQSTReadoutCircs.ZZ]
+                    circFunc = self.do_QuantumCircuitQstQB13
+                    populFunc = self.calcTQPopulationsQB13
             expectation_values = {}
             #fig, axs = plt.subplots(len(readStates), 1, sharex=True, figsize=(6, 1.5*len(readStates)))
             #fig.tight_layout(pad=2.5)
@@ -950,7 +963,7 @@ class xq1i:
                 errData = netobtain(self.pulsed_measurement_logic.measurement_error[1]) / (
                             2 * self.calib_params['rabi_amplitude'])
                 result_dict = self.pulsed_measurement_logic.do_fit('Sine')
-                tFit, sigFit = self.getFitFromNormalizedCounts(tData, sigData)
+                tFit, sigFit = self.getFitFromNormalizedCounts(tData, sigData, type=('no14N' if isQB13 else 'standard') )
                 expectation_values[readoutCirc.value] = sigFit[0]
                 plt.figure(figsize=(5, 1.2))
                 plt.errorbar(tData, sigData, yerr=errData, fmt='o', markersize=4)
@@ -1127,6 +1140,22 @@ class xq1i:
             1 - 2*( vals[TQReadoutCircs.P01.value] + vals[TQReadoutCircs.P10.value] )
         ]
         populations = np.ones( len(TQstates), dtype=np.float64 ) / 4
+        for op,expval in zip(basisTwo[1:],expect_vals):
+            populations += expval*op / 4
+        return populations
+
+
+    def calcTQPopulationsQB13(self, vals):
+        id_diag = np.array([1.0, 1.0])
+        z_diag = np.array([1.0, -1.0])
+        basisOne = [id_diag, z_diag]
+        basisTwo = [ np.kron(op1, op2) for op1 in basisOne for op2 in basisOne ]
+        expect_vals = [
+            -2 * vals[TQQSTReadoutCircs.IZ.value] + 1,
+             2 * vals[TQQSTReadoutCircs.ZI.value] - 1,
+             2 * vals[TQQSTReadoutCircs.ZZ.value] - 1,
+        ]
+        populations = np.ones( 4, dtype=np.float64 ) / 4
         for op,expval in zip(basisTwo[1:],expect_vals):
             populations += expval*op / 4
         return populations
