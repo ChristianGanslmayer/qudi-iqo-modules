@@ -1098,10 +1098,10 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # get tau array for measurement ticks
         if tau_start == 0.0:
-            tau_array = 2*np.geomspace(1e-9, tau_end, num_of_points - 1)
-            tau_array = 2*np.insert(tau_array, 0, 0.0)
+            tau_array = np.geomspace(1e-9, tau_end, num_of_points - 1)
+            tau_array = np.insert(tau_array, 0, 0.0)
         else:
-            tau_array = 2*np.geomspace(tau_start, tau_end, num_of_points)
+            tau_array = np.geomspace(tau_start, tau_end, num_of_points)
 
         # create the elements
         waiting_element = self._get_idle_element(length=self.wait_time,
@@ -1173,7 +1173,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         number_of_lasers = 2 * num_of_points if alternating else num_of_points
         block_ensemble.measurement_information['alternating'] = alternating
         block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['controlled_variable'] = 2*tau_array
         block_ensemble.measurement_information['units'] = ('s', '')
         block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
         block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers

@@ -199,6 +199,26 @@ class xq1i:
         self.pulsedODMR_params['num_of_points'] = 50
         self.pulsedODMR_sweeps = 60000
 
+        self.ramsey_params = self.pulsed_master_logic.generate_method_params['ramsey']
+        self.ramsey_params['name'] = 'ramsey'
+        self.ramsey_params['tau_start'] = 0.0e-9
+        self.ramsey_params['tau_step'] = 301.0e-9
+        self.ramsey_params['laser_on'] = 20.0e-9
+        self.ramsey_params['laser_off'] = 60.0e-9
+        self.ramsey_params['num_of_points'] = 30
+        self.ramsey_params['alternating'] = True
+        self.ramsey_sweeps = 60e3
+
+        self.hahn_params = self.pulsed_master_logic.generate_method_params['hahnecho_exp']
+        self.hahn_params['name'] = 'hahn_echo'
+        self.hahn_params['tau_start'] = 0.0e-9
+        self.hahn_params['tau_end'] = 2.0e-3
+        self.hahn_params['laser_on'] = 20.0e-9
+        self.hahn_params['laser_off'] = 60.0e-9
+        self.hahn_params['num_of_points'] = 20
+        self.hahn_params['alternating'] = True
+        self.hahn_sweeps = 60e3
+
         self.nucspect_params = self.pulsed_master_logic.generate_method_params['NucSpect']
         self.nucspect_params['name'] = 'nucspect'
         self.nucspect_params['NV_pi'] = False
@@ -266,8 +286,8 @@ class xq1i:
         self.xy8_params['tau_step'] =  10.0e-9
         self.xy8_params['num_of_points'] = 50
         self.xy8_params['xy8_order'] = 4
-        self.xy8_params['Init_phase'] = 90
-        self.xy8_params['Read_phase'] = 90
+        self.xy8_params['init_phase'] = 90
+        self.xy8_params['read_phase'] = 90
         self.xy8_params['laser_on'] = 20.0e-9
         self.xy8_params['laser_off'] = 60.0e-9
         self.xy8_params['alternating'] = True
@@ -646,6 +666,72 @@ class xq1i:
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
 
+    def do_ramsey(self):
+        self.generate_params['wait_time'] = 1.5e-6
+        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+
+        self.sequence_generator_logic.delete_ensemble('ramsey')
+        self.sequence_generator_logic.delete_block('ramsey')
+        self.pulsed_master_logic.generate_predefined_sequence('ramsey', self.ramsey_params)
+
+        self._executePulsedMeasurement('ramsey', self.ramsey_sweeps)
+        result_dict = self.pulsed_measurement_logic.do_fit('Exp. Decay Sine')
+        t2star = netobtain(result_dict.params)['decay'].value
+        self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_Ramsey', with_error=False)
+
+        self.generate_params['wait_time'] = 70.5e-6
+        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+
+        tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
+        sigData = (
+                    (netobtain(self.pulsed_measurement_logic.signal_data[2]) - netobtain(self.pulsed_measurement_logic.signal_data[1])) /
+                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
+                  )
+        plt.figure(figsize=(7, 1.5))
+        plt.scatter(tData, sigData, s=10)
+        #plt.plot(tFit, sigFit, color='tab:blue')
+        plt.grid()
+        #plt.yticks([0, 0.5, 1.0])
+        #plt.ylim([-0.3, 1.3])
+        plt.title(rf'Ramsey experiment, measured dephasing time: $T_2^* =${t2star * 1e6:.2f} $\mu s$', fontsize=10)
+        plt.ylabel('norm. counts')
+        plt.xlabel('free precession time (s)')
+        plt.show()
+
+
+    def do_echo_exp(self):
+        self.generate_params['wait_time'] = 1.5e-6
+        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+
+        self.sequence_generator_logic.delete_ensemble('hahn_echo')
+        self.sequence_generator_logic.delete_block('hahn_echo')
+        self.pulsed_master_logic.generate_predefined_sequence('hahnecho_exp', self.hahn_params)
+
+        self._executePulsedMeasurement('hahn_echo', self.hahn_sweeps)
+        result_dict = self.pulsed_measurement_logic.do_fit('Exp Decay')
+        t2 = netobtain(result_dict.params)['decay'].value
+        self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_Hahn', with_error=False)
+
+        self.generate_params['wait_time'] = 70.5e-6
+        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+
+        tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
+        sigData = (
+                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) - netobtain(self.pulsed_measurement_logic.signal_data[2])) /
+                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
+                  )
+        plt.figure(figsize=(7, 1.5))
+        plt.scatter(tData, sigData, s=10)
+        #plt.plot(tFit, sigFit, color='tab:blue')
+        plt.grid()
+        #plt.yticks([0, 0.5, 1.0])
+        #plt.ylim([-0.3, 1.3])
+        plt.title(rf'Hahn echo experiment, measured coherence time: $T_2 =${t2 * 1e6:.2f} $\mu s$', fontsize=10)
+        plt.ylabel('norm. counts')
+        plt.xlabel('free precession time (s)')
+        plt.show()
+
+
     def do_Nucspect(self):
         self.sequence_generator_logic.delete_ensemble('nucspect')
         self.sequence_generator_logic.delete_block('nucspect')
@@ -710,11 +796,26 @@ class xq1i:
         self.sequence_generator_logic.delete_block('xy8_tau')
         self.pulsed_master_logic.generate_predefined_sequence('xy8_tau', self.xy8_params)
 
-        self._executePulsedMeasurement('xy8_tau', self.xy8_sweeps)
-        self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks')
-        self.pulsed_master_logic.save_measurement_data(tag = self.POI_name +
-                                                + f'_XY8_order_{self.xy8_params["xy8_order"]}'
+        #self._executePulsedMeasurement('xy8_tau', self.xy8_sweeps)
+        #self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks')
+        self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + f'_XY8_order_{self.xy8_params["xy8_order"]}'
                                                 ,with_error=False)
+
+        tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
+        sigData = (
+                    (netobtain(self.pulsed_measurement_logic.signal_data[2]) - netobtain(self.pulsed_measurement_logic.signal_data[1])) /
+                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
+                  )
+        plt.figure(figsize=(7, 1.5))
+        plt.scatter(tData, sigData, s=10)
+        #plt.plot(tFit, sigFit, color='tab:blue')
+        plt.grid()
+        #plt.yticks([0, 0.5, 1.0])
+        #plt.ylim([-0.3, 1.3])
+        plt.title(rf'XY8 dynamical decoupling experiment', fontsize=10)
+        plt.ylabel('norm. counts')
+        plt.xlabel(r'$\tau$ (s)')
+        plt.show()
 
 
     def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readoutCirc=TQReadoutCircs.P00, sweeps=100e3):
