@@ -229,7 +229,7 @@ class xq1i:
         self.nucspect_params['freq_start'] = 5.05e6
         self.nucspect_params['freq_step'] = 2.0e3
         self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
-        self.nucspect_params['spect_pi'] = 86000e-9
+        self.nucspect_params['spect_pi'] = 126000e-9
         self.nucspect_params['num_of_points'] = 50
         self.nucspect_params['laser_on'] = 20.0e-9
         self.nucspect_params['laser_off'] = 60.0e-9
@@ -824,7 +824,7 @@ class xq1i:
         self.QCQB12_params['NV_Cpi_freq1'] = self.calib_params['res_freq']
         self.QCQB12_params['RF_freq0'] = self.calib_params['RF_freq0']
         self.QCQB12_params['RF_freq1'] = self.calib_params['RF_freq1']
-        self.QCQB12_params['RF_pi'] = (self.calib_params['nucrabi_RFfreq0_period'] + self.calib_params['nucrabi_RFfreq1_period'])/4
+        self.QCQB12_params['RF_pi'] = self.calib_params['nucrabi_RFfreq0_period']/2 #(self.calib_params['nucrabi_RFfreq0_period'] + self.calib_params['nucrabi_RFfreq1_period'])/4
         self.QCQB12_params['Initial_state'] = initState
         self.QCQB12_params['Readout_circ'] = readoutCirc
         self.QCQB12_params['gate_operations'] = ", ".join([f"{gate.name}({gate.param})[{gate.qubit}]"  for gate in qcQB12])
