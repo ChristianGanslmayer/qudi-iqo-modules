@@ -147,6 +147,7 @@ class xq1i:
     microwave_amplitude_HighPower = 0.05
     nucrabi_RFfreq0_amp = 0.02
     nucrabi_RFfreq1_amp = 0.02
+    nucrabi_13C_RFfreq_amp = 0.02
 
     def __init__(self, pulsed_master_logic, pulsed_measurement_logic, sequence_generator_logic):
         self.pulsed_master_logic = pulsed_master_logic
@@ -163,6 +164,9 @@ class xq1i:
         self.calib_params['rabi_amplitude'] = 0.139
         self.calib_params['nucrabi_RFfreq0_period'] = 160.46e-6
         self.calib_params['nucrabi_RFfreq1_period'] = 160.53e-6
+        self.calib_params['q3_tauhalf_cond'] = 354.95e-9
+        self.calib_params['q3_tauhalf_uncond'] = 1602.5e-9/2
+        self.calib_params['q4_freq'] = 197.0e3
 
         self.rabi_params = self.pulsed_master_logic.generate_method_params['rabi']
         self.rabi_params['name'] = 'rabi'
@@ -528,7 +532,29 @@ class xq1i:
         try:
             print(f"performing calibration of QB3 ...")
             #self.do_AXY8_Spect()
+            self.xy8_params['tau_start'] = 0.5e-6
+            self.xy8_params['tau_step'] = 10.0e-9
+            self.xy8_params['num_of_points'] = 50
+            self.xy8_params['xy8_order'] = 4
             self.do_XY8_Spect()
+            self.pulsed_measurement_logic.alternative_data_type = 'Delta'
+            result_dict = netobtain(
+            self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks', use_alternative_data=True))
+            reson1 = result_dict.params['center_1'].value
+            reson2 = result_dict.params['center_2'].value
+            self.calib_params['q3_tauhalf_cond'] = reson2 if reson1 > reson2 else reson1
+
+            self.xy8_params['tau_start'] = 2.1e-6
+            self.xy8_params['tau_step'] = 10.0e-9
+            self.xy8_params['num_of_points'] = 50
+            self.xy8_params['xy8_order'] = 4
+            self.do_XY8_Spect()
+            self.pulsed_measurement_logic.alternative_data_type = 'Delta'
+            result_dict = netobtain(
+            self.pulsed_measurement_logic.do_fit('Lorentzian Peak', use_alternative_data=True))
+            reson3 = result_dict.params['center'].value
+            self.calib_params['q3_tauhalf_uncond'] = (reson3 - reson2)/2 if reson1 > reson2 else (reson3 - reson1)/2
+
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
             print('\033[91m' + 'WARNING: User interrupt of QB3 calibration, measurement sequence stopped.' + '\033[0m')
@@ -540,7 +566,7 @@ class xq1i:
 
             # DDRF transition frequency measurement
             self.DDrfspect_params['freq'] = 544.1e3
-            self.DDrfspect_params['RF_amp'] = 0.020
+            self.DDrfspect_params['RF_amp'] = self.nucrabi_13C_RFfreq_amp
             self.DDrfspect_params['cyclesf'] = 4
             self.DDrfspect_params['DD_order'] = 10
             outfile = open(self.calibParamsFilePrefix + "QB4_DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq']), "w")
