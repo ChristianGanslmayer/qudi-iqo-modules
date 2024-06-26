@@ -207,7 +207,7 @@ class xq1i:
         self.ramsey_params['laser_off'] = 60.0e-9
         self.ramsey_params['num_of_points'] = 30
         self.ramsey_params['alternating'] = True
-        self.ramsey_sweeps = 60e3
+        self.ramsey_sweeps = 100e3
 
         self.hahn_params = self.pulsed_master_logic.generate_method_params['hahnecho_exp']
         self.hahn_params['name'] = 'hahn_echo'
@@ -795,10 +795,10 @@ class xq1i:
         self.pulsed_master_logic.generate_predefined_sequence('xy8_tau', self.xy8_params)
 
         self._executePulsedMeasurement('xy8_tau', self.xy8_sweeps)
-        #self.pulsed_measurement_logic.alternative_data_type = 'Delta'
-        #result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks', use_alternative_data=True))
-        #reson1 = result_dict.params['center_1'].value
-        #reson2 = result_dict.params['center_2'].value
+        self.pulsed_measurement_logic.alternative_data_type = 'Delta'
+        result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks', use_alternative_data=True))
+        reson1 = result_dict.params['center_1'].value
+        reson2 = result_dict.params['center_2'].value
         self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + f'_XY8_order_{self.xy8_params["xy8_order"]}'
                                                 ,with_error=False)
 
@@ -807,13 +807,13 @@ class xq1i:
         plt.figure(figsize=(7, 1.5))
         plt.plot(tData, sigData, linewidth=0.5)
         plt.scatter(tData, sigData, s=10)
-        #plt.plot(result_dict.high_res_best_fit[0], -result_dict.high_res_best_fit[1])
+        plt.plot(result_dict.high_res_best_fit[0], -result_dict.high_res_best_fit[1])
         plt.grid()
         #plt.yticks([0, 0.5, 1.0])
         #plt.ylim([-0.3, 1.3])
-        plt.title('XY8 dynamical decoupling experiment', fontsize=10)
-        #plt.title(rf'XY8 dynamical decoupling experiment, '
-        #          rf'$\tau_1=${reson1*1e6:.3f} $\mu s$, $\tau_2=${reson2*1e6:.3f} $\mu s$', fontsize=10)
+        #plt.title('XY8 dynamical decoupling experiment', fontsize=10)
+        plt.title(rf'XY8 dynamical decoupling experiment, '
+                  rf'$\tau_1=${reson1*1e6:.3f} $\mu s$, $\tau_2=${reson2*1e6:.3f} $\mu s$', fontsize=10)
         plt.ylabel('norm. counts')
         plt.xlabel(r'$\tau$ (s)')
         plt.show()
@@ -1030,12 +1030,6 @@ class xq1i:
                 result_dict = self.pulsed_measurement_logic.do_fit('Sine')
                 tFit, sigFit = self.getFitFromNormalizedCounts(tData, sigData, type='no14N')
                 expectation_values[readoutCirc.value] = sigFit[0]
-                # if readoutCirc.name in ['ZI', 'ZZ']:
-                #     expectation_values[readoutCirc.value] = 0.9
-                # elif readoutCirc.name in ['IZ']:
-                #     expectation_values[readoutCirc.value] = 0.1
-                # else:
-                #     expectation_values[readoutCirc.value] = 0.5 + np.random.rand()/10
                 plt.figure(figsize=(5, 1.2))
                 plt.errorbar(tData, sigData, yerr=errData, fmt='o', markersize=4)
                 plt.plot(tFit, sigFit, color='tab:blue')
@@ -1054,8 +1048,8 @@ class xq1i:
             self.saveMeasurementResult([{ 'sweeps': sweeps, 'real': np.real(rhoPhys.full()).tolist(), 'imag': np.imag(rhoPhys.full()).tolist() }])
 
             tickLabels = ["00", "01", "10", "11"]
-            x = np.arange(0.25, rho.shape[0])
-            y = np.arange(0.25, rho.shape[1])
+            x = np.arange(0.25, rhoPhys.shape[0])
+            y = np.arange(0.25, rhoPhys.shape[1])
             xx, yy = np.meshgrid(x, y, indexing='ij')
             boxDelta = 0.05
             fig = plt.figure(figsize=(10, 7))
