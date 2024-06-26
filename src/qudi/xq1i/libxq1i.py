@@ -163,18 +163,6 @@ class xq1i:
         self.calib_params['rabi_amplitude'] = 0.139
         self.calib_params['nucrabi_RFfreq0_period'] = 160.46e-6
         self.calib_params['nucrabi_RFfreq1_period'] = 160.53e-6
-        self.loadCalibParams()
-
-        self.generate_params = OrderedDict()
-        self.generate_params['laser_channel'] = 'd_ch1'
-        self.generate_params['sync_channel'] = 'd_ch2'
-        self.generate_params['laser_length'] = 3.2e-06
-        self.generate_params['laser_delay'] = 1.0e-9
-        self.generate_params['wait_time'] = 70.5e-06
-        self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
-        self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
-        self.generate_params['rabi_period'] = 170.50e-09
-        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
         self.rabi_params = self.pulsed_master_logic.generate_method_params['rabi']
         self.rabi_params['name'] = 'rabi'
@@ -360,11 +348,25 @@ class xq1i:
         self.QCQB1234_params['laser_off'] = 60.0e-9
         self.QCQB1234_sweeps = 20e3
 
+        self.loadCalibParams()
+
+        self.generate_params = OrderedDict()
+        self.generate_params['laser_channel'] = 'd_ch1'
+        self.generate_params['sync_channel'] = 'd_ch2'
+        self.generate_params['laser_length'] = 3.2e-06
+        self.generate_params['laser_delay'] = 1.0e-9
+        self.generate_params['wait_time'] = 70.5e-06
+        self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
+        self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
+        self.generate_params['rabi_period'] = 170.50e-09
+        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+
 
     def saveCalibParams(self):
         filename = self.calibParamsFilePrefix + datetime.datetime.now().strftime('%Y%m%d_%H%M') + '.json'
         file = open(filename, 'w')
-        json.dump(self.calib_params, file, indent=4)
+        json.dump([self.calib_params, self.QCQB12_params, self.QCQSTQB13_params, self.QCQB123_params, self.QCQB1234_params],
+                  file, indent=4, default=lambda o: None)
         file.close()
         print(f"INFO: saved updated calibration parameters to file '{os.path.basename(filename)}'")
 
@@ -379,7 +381,8 @@ class xq1i:
     def loadCalibParams(self):
         newestCalibFile = sorted( os.listdir( os.path.dirname(self.calibParamsFilePrefix) ), reverse=True )[0]
         file = open( os.path.join(os.path.dirname(self.calibParamsFilePrefix), newestCalibFile), 'r' )
-        self.calib_params = json.load(file)
+        [self.calib_params, self.QCQB12_params, self.QCQSTQB13_params, self.QCQB123_params, self.QCQB1234_params] = json.load(file)
+        file.close()
         timeStamp = datetime.datetime.strptime( newestCalibFile,  os.path.basename(xq1i.calibParamsFilePrefix) + '%Y%m%d_%H%M' + '.json' )
         print(f"INFO: loaded calibration parameters from file '{newestCalibFile}'")
         if timeStamp + datetime.timedelta(hours=3) < datetime.datetime.now():
