@@ -675,22 +675,20 @@ class xq1i:
         self.pulsed_master_logic.generate_predefined_sequence('ramsey', self.ramsey_params)
 
         self._executePulsedMeasurement('ramsey', self.ramsey_sweeps)
-        result_dict = self.pulsed_measurement_logic.do_fit('Exp. Decay Sine')
-        t2star = netobtain(result_dict.params)['decay'].value
+        self.pulsed_measurement_logic.alternative_data_type = 'Delta'
+        result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Exp. Decay Sine', use_alternative_data=True))
+        t2star = result_dict.params['decay'].value
         self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_Ramsey', with_error=False)
 
         self.generate_params['wait_time'] = 70.5e-6
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
         tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
-        sigData = (
-                    (netobtain(self.pulsed_measurement_logic.signal_data[2]) - netobtain(self.pulsed_measurement_logic.signal_data[1])) /
-                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
-                  )
+        sigData = netobtain(self.pulsed_measurement_logic.signal_data[2]) - netobtain(self.pulsed_measurement_logic.signal_data[1])
         plt.figure(figsize=(7, 1.5))
         plt.plot(tData, sigData, linewidth=0.5)
         plt.scatter(tData, sigData, s=10)
-        #plt.plot(tFit, sigFit, color='tab:blue')
+        plt.plot( result_dict.high_res_best_fit[0], -result_dict.high_res_best_fit[1])
         plt.grid()
         #plt.yticks([0, 0.5, 1.0])
         #plt.ylim([-0.3, 1.3])
@@ -709,22 +707,20 @@ class xq1i:
         self.pulsed_master_logic.generate_predefined_sequence('hahnecho_exp', self.hahn_params)
 
         self._executePulsedMeasurement('hahn_echo', self.hahn_sweeps)
-        result_dict = self.pulsed_measurement_logic.do_fit('Exp Decay')
-        t2 = netobtain(result_dict.params)['decay'].value
+        self.pulsed_measurement_logic.alternative_data_type = 'Delta'
+        result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Exp Decay', use_alternative_data=True))
+        t2 = result_dict.params['decay'].value
         self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_Hahn', with_error=False)
 
         self.generate_params['wait_time'] = 70.5e-6
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
         tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
-        sigData = (
-                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) - netobtain(self.pulsed_measurement_logic.signal_data[2])) /
-                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
-                  )
+        sigData = netobtain(self.pulsed_measurement_logic.signal_data[1]) - netobtain(self.pulsed_measurement_logic.signal_data[2])
         plt.figure(figsize=(7, 1.5))
         plt.plot(tData, sigData, linewidth=0.5)
         plt.scatter(tData, sigData, s=10)
-        #plt.plot(tFit, sigFit, color='tab:blue')
+        plt.plot(result_dict.high_res_best_fit[0], result_dict.high_res_best_fit[1])
         plt.grid()
         #plt.yticks([0, 0.5, 1.0])
         #plt.ylim([-0.3, 1.3])
@@ -799,23 +795,25 @@ class xq1i:
         self.pulsed_master_logic.generate_predefined_sequence('xy8_tau', self.xy8_params)
 
         self._executePulsedMeasurement('xy8_tau', self.xy8_sweeps)
-        #self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks')
+        #self.pulsed_measurement_logic.alternative_data_type = 'Delta'
+        #result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Double Lorentzian Peaks', use_alternative_data=True))
+        #reson1 = result_dict.params['center_1'].value
+        #reson2 = result_dict.params['center_2'].value
         self.pulsed_master_logic.save_measurement_data(tag = self.POI_name + f'_XY8_order_{self.xy8_params["xy8_order"]}'
                                                 ,with_error=False)
 
         tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
-        sigData = (
-                    (netobtain(self.pulsed_measurement_logic.signal_data[2]) - netobtain(self.pulsed_measurement_logic.signal_data[1])) /
-                    (netobtain(self.pulsed_measurement_logic.signal_data[1]) + netobtain(self.pulsed_measurement_logic.signal_data[2]))
-                  )
+        sigData = netobtain(self.pulsed_measurement_logic.signal_data[2]) - netobtain(self.pulsed_measurement_logic.signal_data[1])
         plt.figure(figsize=(7, 1.5))
         plt.plot(tData, sigData, linewidth=0.5)
         plt.scatter(tData, sigData, s=10)
-        #plt.plot(tFit, sigFit, color='tab:blue')
+        #plt.plot(result_dict.high_res_best_fit[0], -result_dict.high_res_best_fit[1])
         plt.grid()
         #plt.yticks([0, 0.5, 1.0])
         #plt.ylim([-0.3, 1.3])
-        plt.title(rf'XY8 dynamical decoupling experiment', fontsize=10)
+        plt.title('XY8 dynamical decoupling experiment', fontsize=10)
+        #plt.title(rf'XY8 dynamical decoupling experiment, '
+        #          rf'$\tau_1=${reson1*1e6:.3f} $\mu s$, $\tau_2=${reson2*1e6:.3f} $\mu s$', fontsize=10)
         plt.ylabel('norm. counts')
         plt.xlabel(r'$\tau$ (s)')
         plt.show()
