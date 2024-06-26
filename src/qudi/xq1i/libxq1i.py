@@ -555,6 +555,7 @@ class xq1i:
             reson3 = result_dict.params['center'].value
             self.calib_params['q3_tauhalf_uncond'] = (reson3 - reson2)/2 if reson1 > reson2 else (reson3 - reson1)/2
 
+            self.saveCalibParams()
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
             print('\033[91m' + 'WARNING: User interrupt of QB3 calibration, measurement sequence stopped.' + '\033[0m')
@@ -591,6 +592,8 @@ class xq1i:
             DDRFampArray = np.array(DDRFamplist)
             ax.plot(DDRFampArray[:, 0], DDRFampArray[:, 1])
             plt.show()
+
+            self.saveCalibParams()
         except KeyboardInterrupt:
             self._interruptPulsedMeasurement()
             print('\033[91m' + 'WARNING: User interrupt of QB4 calibration, measurement sequence stopped.' + '\033[0m')
