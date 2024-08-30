@@ -38,6 +38,7 @@ class TQReadoutCircs(Enum):
     P00 = 1
     P01 = 2
     P10 = 3
+    P11 = 4
 
 class TQQSTReadoutCircs(Enum):
     IX = 1
@@ -498,6 +499,7 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
             TQReadoutCircs.P00.value: gate_noop.get_pulse(QCQB12_params),
             TQReadoutCircs.P01.value: gate_c0q2x.get_pulse(QCQB12_params),
             TQReadoutCircs.P10.value: gate_c0q1x.get_pulse(QCQB12_params),
+            TQReadoutCircs.P11.value: gate_q1sx.get_pulse(QCQB12_params) + gate_q1sx.get_pulse(QCQB12_params) + gate_c0q2x.get_pulse(QCQB12_params)
         }
 
         # combine blocks for init, operations and readout into one state tomography block (sequentially reading the population of each basis state)
@@ -534,24 +536,39 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
         #     statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
         #     statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
 
+        # control readouts (calibration) at multiples of pi (0pi, 2pi [bright], 1pi, 3pi [dark])
+        nPiSet = [0, 1, 2, 3]
+        for nPi in nPiSet:
+            statetomo_block.append(self._get_idle_element(length=QCQB12_params['RF_pi'], increment=0))
+            statetomo_block.append(self._get_mw_element(length=nPi*QCQB12_params['NV_Cpi_len'], increment=0,
+                                                        amp=QCQB12_params['NV_Cpi_amp'],
+                                                        freq=QCQB12_params['NV_Cpi_freq1'],
+                                                        phase=0))
+            for laser_trig in laser_block:
+                statetomo_block.append(laser_trig)
+            statetomo_block.append(self._get_idle_element(length=self.laser_delay, increment=0))
+            statetomo_block.append(self._get_idle_element(length=self.wait_time, increment=0))
+
+        tau_step = QCQB12_params['NV_Cpi_len'] / 5
+        tau_array = np.arange(num_of_points) * tau_step
         # readout of the population of a single state Readout_state (population transfer to 00 and subsequent Rabi driving)
-        if Readout_circ.value in (TQReadoutCircs.P00.value, TQReadoutCircs.P10.value):
-            statetomo_block.append( self._get_idle_element(length=QCQB12_params['RF_pi'], increment=0) )
-        for pulse in initialblock_list:
-            statetomo_block.append(pulse)
-        for pulse in opersblock_list:
-            statetomo_block.append(pulse)
-        for pulse in readout_blocks[Readout_circ.value]:
-            statetomo_block.append(pulse)
-        tau_step = QCQB12_params['NV_Cpi_len']/5
-        statetomo_block.append(self._get_mw_element(length=0, increment=tau_step,
-                                                    amp=QCQB12_params['NV_Cpi_amp'], freq=QCQB12_params['NV_Cpi_freq1'],
-                                                    phase=accum_rotZAng[0])
-                               )
-        for laser_trig in laser_block:
-            statetomo_block.append(laser_trig)
-        statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
-        statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
+        for tau in tau_array:
+            if Readout_circ.value in (TQReadoutCircs.P00.value, TQReadoutCircs.P10.value):
+                statetomo_block.append( self._get_idle_element(length=QCQB12_params['RF_pi'], increment=0) )
+            for pulse in initialblock_list:
+                statetomo_block.append(pulse)
+            for pulse in opersblock_list:
+                statetomo_block.append(pulse)
+            for pulse in readout_blocks[Readout_circ.value]:
+                statetomo_block.append(pulse)
+            statetomo_block.append(self._get_mw_element(length=tau, increment=0,
+                                                        amp=QCQB12_params['NV_Cpi_amp'],
+                                                        freq=QCQB12_params['NV_Cpi_freq1'],
+                                                        phase=accum_rotZAng[0]))
+            for laser_trig in laser_block:
+                statetomo_block.append(laser_trig)
+            statetomo_block.append( self._get_idle_element(length=self.laser_delay, increment=0) )
+            statetomo_block.append( self._get_idle_element(length=self.wait_time, increment=0) )
 
         # Create block ensemble
         created_blocks = list()
@@ -559,7 +576,7 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
         created_sequences = list()
         created_blocks.append(statetomo_block)
         block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
-        block_ensemble.append((statetomo_block.name, num_of_points-1))
+        block_ensemble.append((statetomo_block.name, 0))
 
         # Create and append sync trigger block if needed
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
@@ -567,9 +584,10 @@ class QB1234ControlPredefinedGenerator(PredefinedGeneratorBase):
         # get tau array for measurement ticks
         #tau_array =  np.arange(1,num_points+1)
         #tau_array =  np.arange(4)
-        tau_array = np.arange(num_of_points) * tau_step
+        #tau_array = np.arange(num_of_points) * tau_step
         # add metadata to invoke settings later on
-        number_of_lasers = num_of_points
+        number_of_lasers = num_of_points + len(nPiSet)
+        tau_array = np.concatenate( [ [0]*len(nPiSet), tau_array] )
         block_ensemble.measurement_information['alternating'] = False
         block_ensemble.measurement_information['laser_ignore_list'] = list()
         block_ensemble.measurement_information['controlled_variable'] = tau_array

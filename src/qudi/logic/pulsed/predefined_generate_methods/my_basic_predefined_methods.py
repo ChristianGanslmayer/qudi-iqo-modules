@@ -1244,7 +1244,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_t1_exponential(self, name='T1_exp', tau_start=1.0e-6, tau_end=1.0e-6,
-                                num_of_points=50, alternating=False):
+                                num_of_points=50, laser_on=20.0e-9, laser_off=60.0e-9, alternating=False):
         """
 
         """
@@ -1262,8 +1262,12 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         # create the elements
         waiting_element = self._get_idle_element(length=self.wait_time,
                                                  increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
+
         delay_element = self._get_delay_gate_element()
         if alternating:  # get pi element
             pi_element = self._get_mw_element(length=self.rabi_period / 2,
@@ -1275,13 +1279,15 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         for tau in tau_array:
             tau_element = self._get_idle_element(length=tau, increment=0.0)
             t1_block.append(tau_element)
-            t1_block.append(laser_element)
+            for i, laser_trig in enumerate(laser_block):
+                t1_block.append(laser_trig)
             t1_block.append(delay_element)
             t1_block.append(waiting_element)
             if alternating:
                 t1_block.append(pi_element)
                 t1_block.append(tau_element)
-                t1_block.append(laser_element)
+                for i, laser_trig in enumerate(laser_block):
+                    t1_block.append(laser_trig)
                 t1_block.append(delay_element)
                 t1_block.append(waiting_element)
         created_blocks.append(t1_block)
