@@ -141,7 +141,8 @@ def gate_CeROTn():
 
 class xq1i:
     POI_name = 'Qubit_XQ1i'
-    calibParamsFilePrefix = os.path.join('./', 'calib_params', 'calib_params_')
+    calibParamsFolder = os.path.join('./', 'calib_params')
+    calibParamsFilePrefix = os.path.join(calibParamsFolder, 'calib_params_')
     measResFilePrefix = os.path.join('./', 'measurement_results', 'run_')
     microwave_amplitude_LowPower = 0.008
     microwave_amplitude_HighPower = 0.05
@@ -385,8 +386,16 @@ class xq1i:
     def loadCalibParams(self):
         newestCalibFile = sorted( os.listdir( os.path.dirname(self.calibParamsFilePrefix) ), reverse=True )[0]
         file = open( os.path.join(os.path.dirname(self.calibParamsFilePrefix), newestCalibFile), 'r' )
-        [self.calib_params, self.QCQB12_params, self.QCQSTQB13_params, self.QCQB123_params, self.QCQB1234_params] = json.load(file)
+        calib_params_json = json.load(file)
         file.close()
+        #we do not want to break the reference to the pulsed_master_logic.generate_method_params dictionaries (assigned in the init function)
+        #--> directly assigning the json-loaded dictionaries to the QCQB_param dictionaries is not an option
+        #--> instead, assign dictionaries item by item; caution: this works only as long as dict items exclusively contain immutables (should not be a limitation: generate_methods only accept immutable arguments)
+        calib_params = [self.calib_params, self.QCQB12_params, self.QCQSTQB13_params, self.QCQB123_params, self.QCQB1234_params]
+        calib_params_json[1]['RF_freq1'] = 9999
+        for j, param_set in enumerate(calib_params_json):
+            for param in param_set:
+                calib_params[j][param] = param_set[param]
         timeStamp = datetime.datetime.strptime( newestCalibFile,  os.path.basename(xq1i.calibParamsFilePrefix) + '%Y%m%d_%H%M' + '.json' )
         print(f"INFO: loaded calibration parameters from file '{newestCalibFile}'")
         if timeStamp + datetime.timedelta(hours=3) < datetime.datetime.now():
@@ -500,7 +509,7 @@ class xq1i:
                 self.DDrfspect_params['RF_amp'] = 0.025
                 self.DDrfspect_params['cyclesf'] = 9
                 self.DDrfspect_params['DD_order'] = 18
-                outfile = open("./14N_Calibration/DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq']), "w")
+                outfile = open( os.path.join(self.calibParamsFolder, "DDRF/QB2_DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq'])), "w")
                 DDRFamplist = []
                 freqls = np.arange(2900e3, 3000e3, 2e3).tolist()
                 for freq in freqls:
@@ -570,7 +579,7 @@ class xq1i:
             self.DDrfspect_params['RF_amp'] = self.nucrabi_13C_RFfreq_amp
             self.DDrfspect_params['cyclesf'] = 4
             self.DDrfspect_params['DD_order'] = 10
-            outfile = open(self.calibParamsFilePrefix + "QB4_DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq']), "w")
+            outfile = open( os.path.join(self.calibParamsFolder, "DDRF/QB4_DDRFamplist_freq_{:.0f}.txt".format(self.DDrfspect_params['freq'])), "w")
             DDRFamplist = []
             freqls = np.arange(170e3, 250e3, 2e3).tolist()
             for freq in freqls:
