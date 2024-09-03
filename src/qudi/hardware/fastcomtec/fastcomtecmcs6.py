@@ -196,6 +196,7 @@ class FastComtec(FastCounterInterface):
             self.change_sweep_mode(gated=True)
         else:
             self.change_sweep_mode(gated=False)
+        print('MCS6 done')
         return
 
     def on_deactivate(self):
@@ -266,9 +267,11 @@ class FastComtec(FastCounterInterface):
 
         # when not gated, record length = total sequence length, when gated, record length = laser length.
         # subtract 200 ns to make sure no sequence trigger is missed
+        print('conf FC binwidth')
         self.set_binwidth(bin_width_s)
 
         if self.gated:
+            print('conf FC gates')
             # sequential acquisition, new line on every "sync" trigger
             self.configure_gated_counter(bin_width_s, record_length_s,
                                          cycles=number_of_gates, preset=1)
@@ -276,11 +279,18 @@ class FastComtec(FastCounterInterface):
             # one acquisition for all taus, one sync trigger per acquisition
             # subtract time to make sure no sequence trigger is missed
             no_of_bins = int((record_length_s - self.trigger_safety) / bin_width_s)
-            self.change_sweep_mode(False, cycles=None, preset=None)
-            self.set_length(no_of_bins)
+            print('conf FC sweep mode')
 
+            self.change_sweep_mode(False, cycles=None, preset=None)
+            print('conf FC length')
+
+            self.set_length(no_of_bins)
+            print('conf FC gated done')
+
+        print('conf FC cycles')
         self.set_cycles(number_of_gates)
 
+        print('conf FC done')
         return self.get_binwidth(), self.get_length() * self.get_binwidth(), number_of_gates
 
     def get_status(self):
@@ -292,12 +302,16 @@ class FastComtec(FastCounterInterface):
         3 = paused
         -1 = error state
         """
+        print('MCS6 get status')
         status = AcqStatus()
         self.dll.GetStatusData(ctypes.byref(status), 0)
         # status.started = 3 measn that fct is about to stop
+        print('MCS6 started')
         while status.started == 3:
+            print('MCS6 wait for started', status)
             time.sleep(0.1)
             self.dll.GetStatusData(ctypes.byref(status), 0)
+        print('MCS6 wait done')
         if status.started == 1:
             return 2
         elif status.started == 0:
@@ -312,6 +326,28 @@ class FastComtec(FastCounterInterface):
             self.log.error(
                 'There is an unknown status from FastComtec. The status message was %s' % (str(status.started)))
             return -1
+
+    def get_current_runtime(self):
+        """
+        Returns the current runtime.
+        @return float runtime: in s
+        """
+        status = AcqStatus()
+        self.dll.GetStatusData(ctypes.byref(status), 0)
+        return status.runtime
+
+    def get_current_sweeps(self):
+        """
+        Returns the current sweeps.
+        @return int sweeps: in sweeps
+
+        The fastcomtec has "start" and "sweep" parameters that are generally equal but might differ depending on the
+        configuration. Here the number of trigger events is called "start". This is what is meant by the "sweep"
+        parameter of the fast_counter interface.
+        """
+        status = AcqStatus()
+        self.dll.GetStatusData(ctypes.byref(status), 0)
+        return status.stevents  # the number of trigger is named "stevents".
 
 
     def start_measure(self):
@@ -405,7 +441,7 @@ class FastComtec(FastCounterInterface):
         if self.gated and self.timetrace_tmp != []:
             time_trace = time_trace + self.timetrace_tmp
 
-        info_dict = {'elapsed_sweeps': None,
+        info_dict = {'elapsed_sweeps': self.get_current_sweeps(),
                      'elapsed_time': None}  # TODO : implement that according to hardware capabilities
         return time_trace, info_dict
 
@@ -440,6 +476,7 @@ class FastComtec(FastCounterInterface):
         @return int: asks the actual bitshift and returns the red out value
         """
         cmd = 'BITSHIFT={0}'.format(hex(bitshift))
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return self.get_bitshift()
 
@@ -536,12 +573,14 @@ class FastComtec(FastCounterInterface):
             # Smallest increment is 64 bins. Since it is better if the range is too short than too long, round down
             length_bins = int(64 * int(length_bins / 64))
             cmd = 'RANGE={0}'.format(int(length_bins))
+            print('MCS6 ', cmd)
             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
             #cmd = 'roimax={0}'.format(int(length_bins))
             #self.dll.RunCmd(0, bytes(cmd, 'ascii'))
 
             # insert sleep time, otherwise fast counter crashed sometimes!
             time.sleep(0.5)
+            print('MCS6 range done')
             return length_bins
         else:
             self.log.error('Dimensions {0} are too large for fast counter1!'.format(length_bins *  cycles))
@@ -577,6 +616,7 @@ class FastComtec(FastCounterInterface):
         # A delay can only be adjusted in steps of 6.4ns
         delay_bins = np.rint(delay_s / 6.4e-9)
         cmd = 'fstchan={0}'.format(int(delay_bins))
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return delay_bins
 
@@ -613,6 +653,7 @@ class FastComtec(FastCounterInterface):
                     preset: Number of preset
                     sequences: Number of sequences
         """
+        print('conf FC gated counter')
 
         self.set_binwidth(bin_width_s)
         # Change to gated sweep mode
@@ -658,6 +699,7 @@ class FastComtec(FastCounterInterface):
 
         # Specify preset mode
         cmd = 'prena={0}'.format(hex(mode))
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
 
         # Set the cycles if specified
@@ -675,6 +717,7 @@ class FastComtec(FastCounterInterface):
         @return int mode: specified save mode
         """
         cmd = 'swpreset={0}'.format(preset)
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return preset
 
@@ -704,9 +747,16 @@ class FastComtec(FastCounterInterface):
 
         # Turn on or off sequential cycle mode
         if sequential_mode:
-            cmd = 'sweepmode={0}'.format(hex(1978500))
+            self.log.debug("Sequential mode enabled. Make sure to set 'checksync=0' and 'nomessages=1' in mcs6a.ini.")
+            # old standard setting: 1978500
+            # old settings + disable "sweep counter not needed"
+            # + disable "allow 6 byte words"
+            raw_bytes_dec = 35528836
         else:
-            cmd = 'sweepmode={0}'.format(hex(1978496))
+            raw_bytes_dec = 35528836
+
+        cmd = 'sweepmode={0}'.format(hex(raw_bytes_dec))
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
 
         self.set_cycles(cycles_old)
@@ -726,6 +776,7 @@ class FastComtec(FastCounterInterface):
             cycles = 1
         if self.get_length() * cycles  < constraints['max_bins']:
             cmd = 'cycles={0}'.format(cycles)
+            print('MCS6 ', cmd)
             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
             time.sleep(0.5)
             return cycles
@@ -752,6 +803,7 @@ class FastComtec(FastCounterInterface):
         """
         # Check that no constraint is violated
         cmd = 'sequences={0}'.format(sequences)
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return sequences
 
@@ -826,6 +878,7 @@ class FastComtec(FastCounterInterface):
         @param str name: Location and name of the file
         """
         cmd = 'mpaname=%s' % name
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return name
 
@@ -838,6 +891,7 @@ class FastComtec(FastCounterInterface):
         @return int mode: specified save mode
         """
         cmd = 'savedata={0}'.format(mode)
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return mode
 
@@ -848,6 +902,7 @@ class FastComtec(FastCounterInterface):
         """
         self.change_filename(filename)
         cmd = 'savempa'
+        print('MCS6 ', cmd)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return filename
 

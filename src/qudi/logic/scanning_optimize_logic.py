@@ -298,7 +298,10 @@ class ScanningOptimizeLogic(LogicBase):
             curr_pos = self._scan_logic().scanner_target
             optim_ranges = {ax: (pos - self._scan_range[ax] / 2, pos + self._scan_range[ax] / 2) for
                             ax, pos in curr_pos.items()}
+            #optim_ranges['a'] = (50e-6,50e-6)
+            #print(optim_ranges)
             actual_setting = self._scan_logic().set_scan_range(optim_ranges)
+            #print(actual_setting)
             # FIXME: Comparing floats by inequality here
             if any(val != optim_ranges[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan ranges have been changed by the scanner.')
@@ -332,6 +335,10 @@ class ScanningOptimizeLogic(LogicBase):
 
             self._sequence_index = 0
             self._optimal_position = dict()
+            #self._scan_logic().sigScannerTargetChanged.emit({'a': 0}, self._scan_logic().module_uuid)
+            #self._scan_logic().sigScannerTargetChanged.emit({'a': 0}, self.module_uuid)
+            self._scan_logic().set_target_position( {'a': self._scan_logic().scanner_constraints.axes['a'].max_value},
+                                                    self.module_uuid, move_blocking=True )
             self.sigOptimizeStateChanged.emit(True, self.optimal_position, None)
             self._sigNextSequenceStep.emit()
             return 0
@@ -406,6 +413,8 @@ class ScanningOptimizeLogic(LogicBase):
             # Terminate optimize sequence if finished; continue with next sequence step otherwise
             if self._sequence_index >= len(self._scan_sequence):
                 self.stop_optimize()
+                self._scan_logic().set_target_position( {'a': self._scan_logic().scanner_constraints.axes['a'].min_value},
+                                                        self.module_uuid, move_blocking=True)
             else:
                 self._sigNextSequenceStep.emit()
             return

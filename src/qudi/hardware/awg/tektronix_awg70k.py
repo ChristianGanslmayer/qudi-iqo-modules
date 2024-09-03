@@ -44,7 +44,7 @@ class AWG70K(PulserInterface):
     Example config for copy-paste:
 
     pulser_awg70000:
-        module.Class: 'awg.tektronix_awg70k.AWG70k'
+        module.Class: 'awg.tektronix_awg70k.AWG70K'
         options:
             awg_visa_address: 'TCPIP::10.42.0.211::INSTR'
             awg_ip_address: '10.42.0.211'
@@ -95,6 +95,7 @@ class AWG70K(PulserInterface):
         if not os.path.exists(self._tmp_work_dir):
             os.makedirs(os.path.abspath(self._tmp_work_dir))
 
+        print('connect with visa')
         # connect to awg using PyVISA
         if self._visa_address not in self._rm.list_resources():
             self.awg = None
@@ -105,17 +106,21 @@ class AWG70K(PulserInterface):
             self.awg = self._rm.open_resource(self._visa_address)
             # set timeout by default to 30 sec
             self.awg.timeout = self._visa_timeout * 1000
+        print('connected with visa')
 
         # try connecting to AWG using FTP protocol
         with FTP(self._ip_address) as ftp:
+            print('connected with ftp')
             ftp.login(user=self._username, passwd=self._password)
+            print('login with ftp')
             ftp.cwd(self.ftp_working_dir)
+            print('chdir with ftp')
 
         if self.awg is not None:
             self.awg_model = self.query('*IDN?').split(',')[1]
         else:
             self.awg_model = ''
-
+        print('IDN success')
         # Query some constraints from the device and stash them in order to avoid redundant queries.
         self.__max_seq_steps = int(self.query('SLIS:SEQ:STEP:MAX?'))
         self.__max_seq_repetitions = int(self.query('SLIS:SEQ:STEP:RCO:MAX?'))

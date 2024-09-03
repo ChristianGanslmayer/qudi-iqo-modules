@@ -1294,6 +1294,93 @@ class PredefinedGeneratorBase:
                 phase=phase)
         return mw_element
 
+    def _get_rf_element(self, length, increment, amp=None, freq=None, phase=None):
+        """
+        Creates a MW pulse PulseBlockElement
+
+        @param float length: MW pulse duration in seconds
+        @param float increment: MW pulse duration increment in seconds
+        @param float freq: MW frequency in case of analogue MW channel in Hz
+        @param float amp: MW amplitude in case of analogue MW channel in V
+        @param float phase: MW phase in case of analogue MW channel in deg
+
+        @return: PulseBlockElement, the generated MW element
+        """
+        if self.microwave_channel.startswith('d'):
+            rf_element = self._get_trigger_element(
+                length=length,
+                increment=increment,
+                channels=self.microwave_channel)
+        else:
+            rf_element = self._get_idle_element(
+                length=length,
+                increment=increment)
+            rf_element.pulse_function['a_ch2'] = SamplingFunctions.Sin(
+                amplitude=amp,
+                frequency=freq,
+                phase=phase)
+        return rf_element
+
+    def _get_rfErf_element(self, length, increment, amp=None, freq=None, phase=None, rise_time=None):
+        """
+        Creates a MW pulse PulseBlockElement
+
+        @param float length: MW pulse duration in seconds
+        @param float increment: MW pulse duration increment in seconds
+        @param float freq: MW frequency in case of analogue MW channel in Hz
+        @param float amp: MW amplitude in case of analogue MW channel in V
+        @param float phase: MW phase in case of analogue MW channel in deg
+
+        @return: PulseBlockElement, the generated MW element
+        """
+        if self.microwave_channel.startswith('d'):
+            rf_element = self._get_trigger_element(
+                length=length,
+                increment=increment,
+                channels=self.microwave_channel)
+        else:
+            rf_element = self._get_idle_element(
+                length=length,
+                increment=increment)
+            rf_element.pulse_function['a_ch2'] = SamplingFunctions.SinErf(
+                amplitude=amp,
+                frequency=freq,
+                phase=phase,
+                rise_time=rise_time)
+        return rf_element
+
+    def _get_mwrf_element(self, length, increment, amps=None, freqs=None, phases=None):
+        """
+        Creates a MW pulse PulseBlockElement
+
+        @param float length: MW pulse duration in seconds
+        @param float increment: MW pulse duration increment in seconds
+        @param float freq: MW frequency in case of analogue MW channel in Hz
+        @param float amp: MW amplitude in case of analogue MW channel in V
+        @param float phase: MW phase in case of analogue MW channel in deg
+
+        @return: PulseBlockElement, the generated MW element
+        """
+        if self.microwave_channel.startswith('d'):
+            mwrf_element = self._get_trigger_element(
+                length=length,
+                increment=increment,
+                channels=self.microwave_channel)
+        else:
+            mwrf_element = self._get_idle_element(
+                length=length,
+                increment=increment)
+            mwrf_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
+                amplitude=amps[0],
+                frequency=freqs[0],
+                phase=phases[0])
+            mwrf_element.pulse_function['a_ch2'] = SamplingFunctions.Sin(
+                amplitude=amps[1],
+                frequency=freqs[1],
+                phase=phases[1])
+        return mwrf_element
+
+
     def _get_multiple_mw_element(self, length, increment, amps=None, freqs=None, phases=None):
         """
         Creates single, double or triple sine mw element.
@@ -1350,6 +1437,62 @@ class PredefinedGeneratorBase:
                     phase_3=phases[2])
         return mw_element
 
+    def _get_multiple_rf_element(self, length, increment, amps=None, freqs=None, phases=None):
+        """
+        Creates single, double or triple sine mw element.
+
+        @param float length: MW pulse duration in seconds
+        @param float increment: MW pulse duration increment in seconds
+        @param amps: list containing the amplitudes
+        @param freqs: list containing the frequencies
+        @param phases: list containing the phases
+        @return: PulseBlockElement, the generated MW element
+        """
+        if isinstance(amps, (int, float)):
+            amps = [amps]
+        if isinstance(freqs, (int, float)):
+            freqs = [freqs]
+        if isinstance(phases, (int, float)):
+            phases = [phases]
+
+        if self.microwave_channel.startswith('d'):
+            rf_element = self._get_trigger_element(
+                length=length,
+                increment=increment,
+                channels=self.microwave_channel)
+        else:
+            rf_element = self._get_idle_element(
+                length=length,
+                increment=increment)
+
+            sine_number = min(len(amps), len(freqs), len(phases))
+
+            if sine_number < 2:
+                rf_element.pulse_function['a_ch2'] = SamplingFunctions.Sin(
+                    amplitude=amps[0],
+                    frequency=freqs[0],
+                    phase=phases[0])
+            elif sine_number == 2:
+                rf_element.pulse_function['a_ch2'] = SamplingFunctions.DoubleSinSum(
+                    amplitude_1=amps[0],
+                    amplitude_2=amps[1],
+                    frequency_1=freqs[0],
+                    frequency_2=freqs[1],
+                    phase_1=phases[0],
+                    phase_2=phases[1])
+            else:
+                rf_element.pulse_function['a_ch2'] = SamplingFunctions.TripleSinSum(
+                    amplitude_1=amps[0],
+                    amplitude_2=amps[1],
+                    amplitude_3=amps[2],
+                    frequency_1=freqs[0],
+                    frequency_2=freqs[1],
+                    frequency_3=freqs[2],
+                    phase_1=phases[0],
+                    phase_2=phases[1],
+                    phase_3=phases[2])
+        return rf_element
+
     def _get_mw_laser_element(self, length, increment, amp=None, freq=None, phase=None):
         """
 
@@ -1405,6 +1548,37 @@ class PredefinedGeneratorBase:
                 getattr(SamplingFunctions, sampling_function_name)(**kwargs)
         return mw_element
 
+    def _get_rf_element_linearchirp(self, length, increment, amp=None, start_freq=None, stop_freq=None, phase=None):
+        """
+        Creates a MW pulse PulseBlockElement
+
+        @param float length: MW pulse duration in seconds
+        @param float increment: MW pulse duration increment in seconds
+        @param float start_freq: start MW frequency in case of analogue MW channel in Hz
+        @param float stop_freq: stop MW frequency in case of analogue MW channel in Hz
+        @param float amp: MW amplitude in case of analogue MW channel in V
+        @param float phase: MW phase in case of analogue MW channel in deg
+
+        @return: PulseBlockElement, the generated MW element
+        """
+        if self.microwave_channel.startswith('d'):
+            mw_element = self._get_trigger_element(
+                length=length,
+                increment=increment,
+                channels=self.microwave_channel)
+            self.log.warning('You are trying to create chirped pulses on a digital channel.')
+        else:
+            mw_element = self._get_idle_element(
+                length=length,
+                increment=increment)
+
+            sampling_function_name = 'Chirp'
+            kwargs = {'amplitude': amp, 'start_freq': start_freq, 'stop_freq': stop_freq, 'phase': phase}
+
+            mw_element.pulse_function['a_ch2'] = \
+                getattr(SamplingFunctions, sampling_function_name)(**kwargs)
+        return mw_element
+
     def _get_mw_element_AEchirp(self, length, increment, amp=None, start_freq=None, stop_freq=None, phase=None,
                                 truncation_ratio=0.1):
         """
@@ -1435,6 +1609,39 @@ class PredefinedGeneratorBase:
                       'tau_pulse': truncation_ratio * length}
 
             mw_element.pulse_function[self.microwave_channel] = \
+                getattr(SamplingFunctions, sampling_function_name)(**kwargs)
+        return mw_element
+
+    def _get_rf_element_AEchirp(self, length, increment, amp=None, start_freq=None, stop_freq=None, phase=None,
+                                truncation_ratio=0.1):
+        """
+        Creates a MW pulse PulseBlockElement
+
+        @param float length: MW pulse duration in seconds
+        @param float increment: MW pulse duration increment in seconds
+        @param float start_freq: start MW frequency in case of analogue MW channel in Hz
+        @param float stop_freq: stop MW frequency in case of analogue MW channel in Hz
+        @param float amp: MW amplitude in case of analogue MW channel in V
+        @param float phase: MW phase in case of analogue MW channel in deg
+
+        @return: PulseBlockElement, the generated MW element
+        """
+        if self.microwave_channel.startswith('d'):
+            mw_element = self._get_trigger_element(
+                length=length,
+                increment=increment,
+                channels=self.microwave_channel)
+            self.log.warning('You are trying to create chirped pulses on a digital channel.')
+        else:
+            mw_element = self._get_idle_element(
+                length=length,
+                increment=increment)
+
+            sampling_function_name = 'AllenEberlyChirp'
+            kwargs = {'amplitude': amp, 'start_freq': start_freq, 'stop_freq': stop_freq, 'phase': phase,
+                      'tau_pulse': truncation_ratio * length}
+
+            mw_element.pulse_function['a_ch2'] = \
                 getattr(SamplingFunctions, sampling_function_name)(**kwargs)
         return mw_element
 

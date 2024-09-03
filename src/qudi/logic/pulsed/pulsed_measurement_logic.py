@@ -93,14 +93,14 @@ class PulsedMeasurementLogic(LogicBase):
 
     # fast counter settings
     __fast_counter_record_length = StatusVar(default=3.0e-6)
-    __fast_counter_binwidth = StatusVar(default=1.0e-9)
+    __fast_counter_binwidth = StatusVar(default=3.2e-9)
     __fast_counter_gates = StatusVar(default=0)
 
     # measurement timer settings
     __timer_interval = StatusVar(default=5)
 
     # Pulsed measurement settings
-    _invoke_settings_from_sequence = StatusVar(default=False)
+    _invoke_settings_from_sequence = StatusVar(default=True)
     _number_of_lasers = StatusVar(default=50)
     _controlled_variable = StatusVar(default=list(range(50)),
                                      constructor=lambda x: np.array(x, dtype=float),
@@ -277,11 +277,14 @@ class PulsedMeasurementLogic(LogicBase):
             self.__fast_counter_binwidth = binning_constraints[0]
         if self.__fast_counter_record_length <= 0:
             self.__fast_counter_record_length = 3e-6
+        print('FC off')
         self.fast_counter_off()
         # Set default number of gates to a reasonable number for gated counters (>0 if gated)
         if self._fastcounter().is_gated() and self.__fast_counter_gates < 1:
             self.__fast_counter_gates = max(1, self._number_of_lasers)
+        print('FC settings')
         self.set_fast_counter_settings()
+        print('FC settings done')
 
         # Check and configure external microwave
         if self.__use_ext_microwave:
@@ -367,7 +370,9 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Check if fast counter is running and do nothing if that is the case
+        print('set FC settings')
         counter_status = self._fastcounter().get_status()
+        print('FC stats', counter_status)
         if not counter_status >= 2 and not counter_status < 0:
             # Determine complete settings dictionary
             if not isinstance(settings_dict, dict):
@@ -377,16 +382,22 @@ class PulsedMeasurementLogic(LogicBase):
 
             # Set parameters if present
             if 'bin_width' in settings_dict:
+                print('set FC bin width')
                 self.__fast_counter_binwidth = float(settings_dict['bin_width'])
             if 'record_length' in settings_dict:
+                print('set FC record length')
                 self.__fast_counter_record_length = float(settings_dict['record_length'])
             if 'number_of_gates' in settings_dict:
+                print('set FC gated')
                 if self._fastcounter().is_gated():
+                    print('set FC number of gates')
                     self.__fast_counter_gates = int(settings_dict['number_of_gates'])
                 else:
+                    print('set FC no gates')
                     self.__fast_counter_gates = 0
 
             # Apply the settings to hardware
+            print('FC configure')
             self.__fast_counter_binwidth, \
             self.__fast_counter_record_length, \
             self.__fast_counter_gates = self._fastcounter().configure(
@@ -400,6 +411,7 @@ class PulsedMeasurementLogic(LogicBase):
 
         # emit update signal for master (GUI or other logic module)
         self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
+        print('set FC settings done')
         return self.fast_counter_settings
 
     def fast_counter_on(self):
@@ -407,6 +419,7 @@ class PulsedMeasurementLogic(LogicBase):
 
         @return int: error code (0:OK, -1:error)
         """
+        print('FC on!')
         return self._fastcounter().start_measure()
 
     def fast_counter_off(self):
@@ -414,6 +427,7 @@ class PulsedMeasurementLogic(LogicBase):
 
         @return int: error code (0:OK, -1:error)
         """
+        print('FC off!')
         return self._fastcounter().stop_measure()
 
     @QtCore.Slot(bool)
@@ -915,16 +929,11 @@ class PulsedMeasurementLogic(LogicBase):
                 else:
                     self._recalled_raw_data_tag = None
 
-                # start microwave source
-                if self.__use_ext_microwave:
-                    self.microwave_on()
-                # start fast counter
-                self.fast_counter_on()
-                # start pulse generator
-                self.pulse_generator_on()
+
 
                 # initialize analysis_timer
                 self.__elapsed_time = 0.0
+                self.__elapsed_sweeps = 0
                 self._elapsed_pause = 0
                 self.sigTimerUpdated.emit(self.__elapsed_time,
                                           self.__elapsed_sweeps,
@@ -933,6 +942,14 @@ class PulsedMeasurementLogic(LogicBase):
                 # Set starting time and start timer (if present)
                 self.__start_time = time.time()
                 self.sigStartTimer.emit()
+
+                # start microwave source
+                if self.__use_ext_microwave:
+                    self.microwave_on()
+                # start fast counter
+                self.fast_counter_on()
+                # start pulse generator
+                self.pulse_generator_on()
 
                 # Set measurement paused flag
                 self.__is_paused = False

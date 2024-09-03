@@ -137,7 +137,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
         self.__populate_parameter_dict()
 
         # Set default analysis method
-        self._current_analysis_method = natural_sort(self._analysis_methods)[0]
+        self._current_analysis_method = natural_sort(self._analysis_methods)[1] #Changed the default analysis method from mean to mean_norm
 
         # Update from parameter_dict if handed over
         if isinstance(pulsedmeasurementlogic.analysis_parameters, dict):

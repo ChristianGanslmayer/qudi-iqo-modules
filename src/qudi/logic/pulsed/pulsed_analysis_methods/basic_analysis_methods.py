@@ -31,8 +31,8 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def analyse_mean_norm(self, laser_data, signal_start=0.0, signal_end=200e-9, norm_start=300e-9,
-                          norm_end=500e-9):
+    def analyse_mean_norm(self, laser_data, signal_start=25.6e-9, signal_end=195.2e-9, norm_start=2502e-9,
+                          norm_end=2668.4e-9):
         """
 
         @param laser_data:
