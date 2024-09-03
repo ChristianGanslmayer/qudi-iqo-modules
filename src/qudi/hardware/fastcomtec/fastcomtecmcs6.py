@@ -177,7 +177,7 @@ class FastComtec(FastCounterInterface):
     gated = ConfigOption('gated', False, missing='warn')
     trigger_safety = ConfigOption('trigger_safety', 400e-9, missing='warn')
     aom_delay = ConfigOption('aom_delay', 390e-9, missing='warn')
-    minimal_binwidth = ConfigOption('minimal_binwidth', 0.2e-9, missing='warn')
+    minimal_binwidth = ConfigOption('minimal_binwidth', 0.1e-9, missing='warn')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -191,7 +191,7 @@ class FastComtec(FastCounterInterface):
         """ Initialisation performed during activation of the module.
         """
 
-        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
+        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMPA4.dll')
         if self.gated:
             self.change_sweep_mode(gated=True)
         else:
@@ -244,7 +244,7 @@ class FastComtec(FastCounterInterface):
         constraints['hardware_binwidth_list'] = list(self.minimal_binwidth * (2 ** np.array(
                                                      np.linspace(0,24,25))))
         constraints['max_sweep_len'] = 6.8
-        constraints['max_bins'] = 6.8 /0.2e-9
+        constraints['max_bins'] = 6.8 /0.1e-9
         return constraints
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=1):

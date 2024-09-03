@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import ctypes
 import numpy as np
+import os
 import time
 from qtpy import QtCore
 
@@ -173,13 +174,14 @@ class PicoHarp300(FastCounterInterface):
 
         maindir = get_main_dir()
 
-        filename = os.path.join(maindir, 'hardware', 'PicoQuant', 'errorcodes.h')
+        filename = os.path.join(maindir, 'hardware', 'picoquant', 'errorcodes.h')
         try:
             with open(filename) as f:
                 content = f.readlines()
         except:
             self.log.error('No file "errorcodes.h" could be found in the '
-                           'PicoHarp hardware directory!')
+                           'PicoHarp hardware directory {0} !'.format(filename))
+
 
         errorcode = {}
         for line in content:

@@ -75,6 +75,36 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
+    def generate_pulsedlaser_on(self, name='pulsedlaser_on', laser_on=20.0e-9, laser_off = 60.0e-9 ):
+        """ Generates Laser on.
+
+        @param str name: Name of the PulseBlockEnsemble
+        @param float length: laser duration in seconds
+
+        @return object: the generated PulseBlockEnsemble object.
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # Create block
+        laser_block = PulseBlock(name=name)
+        # create the laser element
+        laseron_element = self._get_laser_element(length=laser_on, increment=0)
+        laseroff_element = self._get_idle_element(length=laser_off, increment=0)
+
+        laser_rep = int(self.laser_length/(laser_on+laser_off))
+        for n in range(laser_rep):
+            laser_block.append(laseron_element)
+            laser_block.append(laseroff_element)
+        # Append to created_blocks list
+        created_blocks.append(laser_block)
+        # Create block ensemble and append to created_ensembles list
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble.append((laser_block.name, 0))
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
     def generate_laser_mw_on(self, name='laser_mw_on', length=3.0e-6):
         """ General generation method for laser on and microwave on generation.
 
