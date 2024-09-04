@@ -353,7 +353,7 @@ class xq1i:
         self.QCQB1234_params['laser_off'] = 60.0e-9
         self.QCQB1234_sweeps = 20e3
 
-        self.loadCalibParams()
+        #self.loadCalibParams()
 
         self.generate_params = OrderedDict()
         self.generate_params['laser_channel'] = 'd_ch1'
@@ -650,6 +650,10 @@ class xq1i:
                 time.sleep(0.5)
 
 
+    def pulsed_laser_on(self):
+        self.pulsed_master_logic.generate_predefined_sequence('pulsedlaser_on')
+
+
     def selecive_nucrabi(self):
         # pulsed ODMR
         self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
@@ -700,7 +704,7 @@ class xq1i:
         self.saveCalibParams()
 
 
-    def do_rabi(self, isSlow=False):
+    def do_rabi(self, poiName, isSlow=False):
         if not isSlow:
             self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
             self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
@@ -738,7 +742,7 @@ class xq1i:
 
 
 
-    def do_pulsedODMR(self):
+    def do_pulsedODMR(poiName):
         self.generate_params['microwave_amplitude'] = self.microwave_amplitude_LowPower
         self.generate_params['rabi_period'] = self.calib_params['rabi_period_LowPower']
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
@@ -749,7 +753,7 @@ class xq1i:
 
         self._executePulsedMeasurement('pulsedODMR', self.pulsedODMR_sweeps)
         self.pulsed_measurement_logic.do_fit('Lorentzian Dip')
-        self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_PODMR'
+        self.pulsed_master_logic.save_measurement_data(tag=poiName + '_PODMR'
                                                +'_amp_'+str(round((self.generate_params['microwave_amplitude']),4))+'V', with_error=False)
 
         self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
