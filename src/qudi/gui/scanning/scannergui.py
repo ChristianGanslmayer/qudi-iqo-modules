@@ -790,7 +790,7 @@ class ScannerGui(GuiBase):
         return
 
     @QtCore.Slot(bool, dict, object)
-    def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
+    def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None, peakcnt=None):
         self._optimizer_state['is_running'] = is_running
         _is_optimizer_valid_1d = not is_running
         _is_optimizer_valid_2d = not is_running
@@ -824,7 +824,7 @@ class ScannerGui(GuiBase):
                 self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
                 sig_z = fit_res.params['sigma'].value
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
-                                                          scan_axs, sigma=sig_z)
+                                                          scan_axs, sigma=sig_z, peakcnt=peakcnt)
             elif data.ndim == 2:
                 sig_x, sig_y = fit_res.params['sigma_x'].value, fit_res.params['sigma_y'].value
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),

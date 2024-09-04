@@ -63,7 +63,7 @@ class ScanningOptimizeLogic(LogicBase):
     _scan_resolution = StatusVar(name='scan_resolution', default=None)
 
     # signals
-    sigOptimizeStateChanged = QtCore.Signal(bool, dict, object)
+    sigOptimizeStateChanged = QtCore.Signal(bool, dict, object, float)
     sigOptimizeSettingsChanged = QtCore.Signal(dict)
 
     _sigNextSequenceStep = QtCore.Signal()
@@ -281,7 +281,7 @@ class ScanningOptimizeLogic(LogicBase):
     def start_optimize(self):
         with self._thread_lock:
             if self.module_state() != 'idle':
-                self.sigOptimizeStateChanged.emit(True, dict(), None)
+                self.sigOptimizeStateChanged.emit(True, dict(), None, None)
                 return 0
 
             # ToDo: Sanity checks for settings go here
@@ -289,7 +289,7 @@ class ScanningOptimizeLogic(LogicBase):
             with self._result_lock:
                 self._last_scans = list()
                 self._last_fits = list()
-            self.sigOptimizeStateChanged.emit(True, dict(), None)
+            self.sigOptimizeStateChanged.emit(True, dict(), None, None)
 
             # stash old scanner settings
             self._stashed_scan_settings = self._scan_logic().scan_settings
@@ -335,7 +335,7 @@ class ScanningOptimizeLogic(LogicBase):
 
             self._sequence_index = 0
             self._optimal_position = dict()
-            self.sigOptimizeStateChanged.emit(True, self.optimal_position, None)
+            self.sigOptimizeStateChanged.emit(True, self.optimal_position, None, None)
             self._sigNextSequenceStep.emit()
             return 0
 
@@ -393,7 +393,7 @@ class ScanningOptimizeLogic(LogicBase):
                     with self._result_lock:
                         self._last_scans.append(data.copy())
                         self._last_fits.append(fit_res)
-                    self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
+                    self.sigOptimizeStateChanged.emit(True, position_update, fit_data, fit_res.model.eval(fit_res.params, x=opt_pos))
 
                     # Abort optimize if fit failed
                     if fit_data is None:
@@ -416,7 +416,7 @@ class ScanningOptimizeLogic(LogicBase):
     def stop_optimize(self):
         with self._thread_lock:
             if self.module_state() == 'idle':
-                self.sigOptimizeStateChanged.emit(False, dict(), None)
+                self.sigOptimizeStateChanged.emit(False, dict(), None, None)
                 return 0
 
             if self._scan_logic().module_state() != 'idle':
@@ -427,7 +427,7 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_logic().set_scan_settings(self._stashed_scan_settings)
             self._stashed_scan_settings = dict()
             self.module_state.unlock()
-            self.sigOptimizeStateChanged.emit(False, dict(), None)
+            self.sigOptimizeStateChanged.emit(False, dict(), None, None)
             return err
 
     def _get_pos_from_2d_gauss_fit(self, xy, data):

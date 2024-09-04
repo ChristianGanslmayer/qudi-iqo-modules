@@ -42,6 +42,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         self.setObjectName('optimizer_dockWidget')
 
         self._last_optimal_pos = {}
+        self._last_peakcnt = None
         self._last_optimal_sigma = {}
         self._scanner_sequence = sequence
         self._plot_widgets = []
@@ -191,13 +192,14 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
 
         self.update_result_label()
 
-    def set_1d_position(self, pos, axs, sigma=None):
+    def set_1d_position(self, pos, axs, sigma=None, peakcnt=None):
         widget = self.get_plot_widget(axs)
         widget.move_marker_selection((pos, 0), index=0)
 
         self._last_optimal_pos[axs[0]] = pos
         if sigma:
             self._last_optimal_sigma[axs[0]] = sigma
+        self._last_peakcnt = peakcnt
 
         self.update_result_label()
 
@@ -222,7 +224,8 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         pos_str = _dict_2_str(self._last_optimal_pos)
         sigma_str = _dict_2_str(self._last_optimal_sigma)
         self.pos_ax_label.setText(axis_str)
-        self.result_label.setText(pos_str + " µm,  σ= " + sigma_str + " µm")
+        peakcnt_label = "" if self._last_peakcnt is None else f", peak cnts: {self._last_peakcnt:.2E}"
+        self.result_label.setText(pos_str + " µm,  σ= " + sigma_str + " µm" + peakcnt_label)
 
     def set_image(self, image, axs, extent=None):
 

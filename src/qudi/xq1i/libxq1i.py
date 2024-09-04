@@ -205,7 +205,7 @@ class xq1i:
         self.hahn_params = self.pulsed_master_logic.generate_method_params['hahnecho_exp']
         self.hahn_params['name'] = 'hahn_echo'
         self.hahn_params['tau_start'] = 0.0e-9
-        self.hahn_params['tau_end'] = 2.0e-3
+        self.hahn_params['tau_end'] = 2.0e-5
         self.hahn_params['laser_on'] = 20.0e-9
         self.hahn_params['laser_off'] = 60.0e-9
         self.hahn_params['num_of_points'] = 20
@@ -652,6 +652,15 @@ class xq1i:
 
     def pulsed_laser_on(self):
         self.pulsed_master_logic.generate_predefined_sequence('pulsedlaser_on')
+        self.pulsed_master_logic.sample_ensemble('pulsedlaser_on', with_load=False)
+        while self.pulsed_master_logic.status_dict['sampling_ensemble_busy']:
+            time.sleep(0.5)
+        self.pulsed_master_logic.load_ensemble('pulsedlaser_on')
+        while self.pulsed_master_logic.status_dict['loading_busy']:
+            time.sleep(0.5)
+        self.pulsed_master_logic.set_measurement_settings(invoke_settings=False)
+        time.sleep(1)
+        self.pulsed_master_logic.toggle_pulsed_measurement(True)
 
 
     def selecive_nucrabi(self):
@@ -730,7 +739,7 @@ class xq1i:
 
         self._executePulsedMeasurement('rabi', self.rabi_sweeps)
         self.pulsed_measurement_logic.do_fit('Sine')
-        self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_Rabi'
+        self.pulsed_master_logic.save_measurement_data(tag=poiName + '_Rabi'
                                                 +'_freq_'+str(round((self.generate_params['microwave_frequency']/(1e6)),4))+'MHz'
                                                 +'_amp_'+str(round((self.generate_params['microwave_amplitude']),4))+'V', with_error=False)
         # reset to fast Rabi parameters (default Rabi)
@@ -742,7 +751,7 @@ class xq1i:
 
 
 
-    def do_pulsedODMR(poiName):
+    def do_pulsedODMR(self, poiName):
         self.generate_params['microwave_amplitude'] = self.microwave_amplitude_LowPower
         self.generate_params['rabi_period'] = self.calib_params['rabi_period_LowPower']
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
@@ -793,19 +802,19 @@ class xq1i:
         plt.show()
 
 
-    def do_echo_exp(self):
+    def do_echo(self, poiName):
         self.generate_params['wait_time'] = 1.5e-6
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
         self.sequence_generator_logic.delete_ensemble('hahn_echo')
         self.sequence_generator_logic.delete_block('hahn_echo')
-        self.pulsed_master_logic.generate_predefined_sequence('hahnecho_exp', self.hahn_params)
+        self.pulsed_master_logic.generate_predefined_sequence('hahnecho', self.hahn_params)
 
         self._executePulsedMeasurement('hahn_echo', self.hahn_sweeps)
         self.pulsed_measurement_logic.alternative_data_type = 'Delta'
         result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Exp Decay', use_alternative_data=True))
         t2 = result_dict.params['decay'].value
-        self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_Hahn', with_error=False)
+        self.pulsed_master_logic.save_measurement_data(tag=poiName + '_Hahn', with_error=False)
 
         self.generate_params['wait_time'] = 70.5e-6
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
