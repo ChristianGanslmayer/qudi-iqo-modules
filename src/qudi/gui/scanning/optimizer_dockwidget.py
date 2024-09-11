@@ -180,7 +180,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
             else:
                 wid.hide_marker_selections()
 
-    def set_2d_position(self, pos, axs, sigma=None):
+    def set_2d_position(self, pos, axs, sigma=None, peakcnt=None):
         widget = self.get_plot_widget(axs)
         widget.move_marker_selection(pos, index=0)
 
@@ -189,6 +189,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         if sigma:
             self._last_optimal_sigma[axs[0]] = sigma[0]
             self._last_optimal_sigma[axs[1]] = sigma[1]
+        self._last_peakcnt = peakcnt
 
         self.update_result_label()
 

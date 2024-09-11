@@ -828,7 +828,7 @@ class ScannerGui(GuiBase):
             elif data.ndim == 2:
                 sig_x, sig_y = fit_res.params['sigma_x'].value, fit_res.params['sigma_y'].value
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
-                                                          scan_axs, sigma=[sig_x, sig_y])
+                                                          scan_axs, sigma=[sig_x, sig_y], peakcnt=peakcnt)
 
         # Hide crosshair and 1d marker when scanning
         if len(scan_axs) == 2:
