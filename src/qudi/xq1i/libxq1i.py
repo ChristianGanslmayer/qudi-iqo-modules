@@ -144,8 +144,8 @@ class xq1i:
     calibParamsFolder = os.path.join('./', 'calib_params')
     calibParamsFilePrefix = os.path.join(calibParamsFolder, 'calib_params_')
     measResFilePrefix = os.path.join('./', 'measurement_results', 'run_')
-    microwave_amplitude_LowPower = 0.008
-    microwave_amplitude_HighPower = 0.05
+    microwave_amplitude_LowPower = 0.125
+    microwave_amplitude_HighPower = 0.125
     nucrabi_RFfreq0_amp = 0.02
     nucrabi_RFfreq1_amp = 0.02
     nucrabi_13C_RFfreq_amp = 0.02
@@ -156,11 +156,11 @@ class xq1i:
         self.sequence_generator_logic = sequence_generator_logic
 
         self.calib_params = OrderedDict()
-        self.calib_params['res_freq'] = 1.4472e9
+        self.calib_params['res_freq'] = 2.664e9
         self.calib_params['RF_freq0'] = 5.0962e6
         self.calib_params['RF_freq1'] = 2.9256e6
-        self.calib_params['rabi_period_LowPower'] = 1.504e-6
-        self.calib_params['rabi_period_HighPower'] = 170e-09
+        self.calib_params['rabi_period_LowPower'] = 150e-9
+        self.calib_params['rabi_period_HighPower'] = 150e-9
         self.calib_params['rabi_offset'] = 1.00181
         self.calib_params['rabi_amplitude'] = 0.139
         self.calib_params['nucrabi_RFfreq0_period'] = 160.46e-6
@@ -195,20 +195,20 @@ class xq1i:
         self.ramsey_params = self.pulsed_master_logic.generate_method_params['ramsey']
         self.ramsey_params['name'] = 'ramsey'
         self.ramsey_params['tau_start'] = 0.0e-9
-        self.ramsey_params['tau_step'] = 301.0e-9
+        self.ramsey_params['tau_step'] = 20.0e-9
         self.ramsey_params['laser_on'] = 20.0e-9
         self.ramsey_params['laser_off'] = 60.0e-9
-        self.ramsey_params['num_of_points'] = 30
+        self.ramsey_params['num_of_points'] = 25
         self.ramsey_params['alternating'] = True
         self.ramsey_sweeps = 100e3
 
-        self.hahn_params = self.pulsed_master_logic.generate_method_params['hahnecho_exp']
+        self.hahn_params = self.pulsed_master_logic.generate_method_params['hahnecho']
         self.hahn_params['name'] = 'hahn_echo'
         self.hahn_params['tau_start'] = 0.0e-9
-        self.hahn_params['tau_end'] = 2.0e-5
+        self.hahn_params['tau_step'] = 0.2e-6
+        self.hahn_params['num_of_points'] = 25
         self.hahn_params['laser_on'] = 20.0e-9
         self.hahn_params['laser_off'] = 60.0e-9
-        self.hahn_params['num_of_points'] = 20
         self.hahn_params['alternating'] = True
         self.hahn_sweeps = 60e3
 
@@ -360,10 +360,10 @@ class xq1i:
         self.generate_params['sync_channel'] = 'd_ch2'
         self.generate_params['laser_length'] = 3.2e-06
         self.generate_params['laser_delay'] = 1.0e-9
-        self.generate_params['wait_time'] = 70.5e-06
+        self.generate_params['wait_time'] = 10.0e-06
         self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
         self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
-        self.generate_params['rabi_period'] = 170.50e-09
+        self.generate_params['rabi_period'] = 150.0e-09
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
 
@@ -726,11 +726,11 @@ class xq1i:
         else:
             self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
             self.generate_params['microwave_amplitude'] = self.microwave_amplitude_LowPower  #value needs to be checked/maybe tuned
-            self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
+            #self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
             self.pulsed_master_logic.set_generation_parameters(self.generate_params)
             self.rabi_params['tau_start'] = 0.0e-9
-            self.rabi_params['tau_step'] = 98.6e-9 #151.0e-9(5mV), 246.0e-9(3mV)
-            self.rabi_params['delay_time'] = (self.calib_params['nucrabi_RFfreq0_period'] )
+            self.rabi_params['tau_step'] = 10.0e-9 #151.0e-9(5mV), 246.0e-9(3mV)
+            self.rabi_params['delay_time'] = 10.0e-6 # (self.calib_params['nucrabi_RFfreq0_period'] )
             self.rabi_params['num_of_points'] = 30
 
         self.sequence_generator_logic.delete_ensemble('rabi')
@@ -743,17 +743,17 @@ class xq1i:
                                                 +'_freq_'+str(round((self.generate_params['microwave_frequency']/(1e6)),4))+'MHz'
                                                 +'_amp_'+str(round((self.generate_params['microwave_amplitude']),4))+'V', with_error=False)
         # reset to fast Rabi parameters (default Rabi)
-        if isSlow:
-            self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
-            self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
-            self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
-            self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+        #if isSlow:
+            #self.generate_params['microwave_frequency'] = self.calib_params['res_freq']
+            #self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
+            #self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
+            #self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
 
 
     def do_pulsedODMR(self, poiName):
         self.generate_params['microwave_amplitude'] = self.microwave_amplitude_LowPower
-        self.generate_params['rabi_period'] = self.calib_params['rabi_period_LowPower']
+        #self.generate_params['rabi_period'] = self.calib_params['rabi_period_LowPower']
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
         self.sequence_generator_logic.delete_ensemble('pulsedODMR')
@@ -765,12 +765,12 @@ class xq1i:
         self.pulsed_master_logic.save_measurement_data(tag=poiName + '_PODMR'
                                                +'_amp_'+str(round((self.generate_params['microwave_amplitude']),4))+'V', with_error=False)
 
-        self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
-        self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
-        self.pulsed_master_logic.set_generation_parameters(self.generate_params)
+        #self.generate_params['microwave_amplitude'] = self.microwave_amplitude_HighPower
+        #self.generate_params['rabi_period'] = self.calib_params['rabi_period_HighPower']
+        #self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
 
-    def do_ramsey(self):
+    def do_ramsey(self, poiName):
         self.generate_params['wait_time'] = 1.5e-6
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
 
@@ -780,26 +780,11 @@ class xq1i:
 
         self._executePulsedMeasurement('ramsey', self.ramsey_sweeps)
         self.pulsed_measurement_logic.alternative_data_type = 'Delta'
-        result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Exp. Decay Sine', use_alternative_data=True))
-        t2star = result_dict.params['decay'].value
-        self.pulsed_master_logic.save_measurement_data(tag=self.POI_name + '_Ramsey', with_error=False)
+        self.pulsed_measurement_logic.do_fit('Exp. Decay Sine', use_alternative_data=True)
+        self.pulsed_master_logic.save_measurement_data(tag=poiName + '_Ramsey', with_error=False)
 
-        self.generate_params['wait_time'] = 70.5e-6
+        self.generate_params['wait_time'] = 10.0e-6
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
-
-        tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
-        sigData = netobtain(self.pulsed_measurement_logic.signal_data[2]) - netobtain(self.pulsed_measurement_logic.signal_data[1])
-        plt.figure(figsize=(7, 1.5))
-        plt.plot(tData, sigData, linewidth=0.5)
-        plt.scatter(tData, sigData, s=10)
-        plt.plot( result_dict.high_res_best_fit[0], -result_dict.high_res_best_fit[1])
-        plt.grid()
-        #plt.yticks([0, 0.5, 1.0])
-        #plt.ylim([-0.3, 1.3])
-        plt.title(rf'Ramsey experiment, measured dephasing time: $T_2^* =${t2star * 1e6:.2f} $\mu s$', fontsize=10)
-        plt.ylabel('norm. counts')
-        plt.xlabel('free precession time (s)')
-        plt.show()
 
 
     def do_echo(self, poiName):
@@ -812,26 +797,11 @@ class xq1i:
 
         self._executePulsedMeasurement('hahn_echo', self.hahn_sweeps)
         self.pulsed_measurement_logic.alternative_data_type = 'Delta'
-        result_dict = netobtain(self.pulsed_measurement_logic.do_fit('Exp Decay', use_alternative_data=True))
-        t2 = result_dict.params['decay'].value
+        self.pulsed_measurement_logic.do_fit('Exp Decay', use_alternative_data=True)
         self.pulsed_master_logic.save_measurement_data(tag=poiName + '_Hahn', with_error=False)
 
-        self.generate_params['wait_time'] = 70.5e-6
+        self.generate_params['wait_time'] = 10.0e-6
         self.pulsed_master_logic.set_generation_parameters(self.generate_params)
-
-        tData = netobtain(self.pulsed_measurement_logic.signal_data[0])
-        sigData = netobtain(self.pulsed_measurement_logic.signal_data[1]) - netobtain(self.pulsed_measurement_logic.signal_data[2])
-        plt.figure(figsize=(7, 1.5))
-        plt.plot(tData, sigData, linewidth=0.5)
-        plt.scatter(tData, sigData, s=10)
-        plt.plot(result_dict.high_res_best_fit[0], result_dict.high_res_best_fit[1])
-        plt.grid()
-        #plt.yticks([0, 0.5, 1.0])
-        #plt.ylim([-0.3, 1.3])
-        plt.title(rf'Hahn echo experiment, measured coherence time: $T_2 =${t2 * 1e6:.2f} $\mu s$', fontsize=10)
-        plt.ylabel('norm. counts')
-        plt.xlabel('free precession time (s)')
-        plt.show()
 
 
     def do_Nucspect(self):
