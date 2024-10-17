@@ -1655,7 +1655,14 @@ class PredefinedGeneratorBase:
     def _add_trigger(self, created_blocks, block_ensemble):
         if self.sync_channel:
             sync_block = PulseBlock(name='sync_trigger')
-            sync_block.append(self._get_sync_element())
+
+            # standard qudi trigger element: 50 ns digital high at the end of the sequence
+            #sync_block.append(self._get_sync_element())
+
+            # alternative trigger element (for debugging the issue with smeared laser pulses): 25 ns digital high + 25 ns digital low at the end of the sequence (alternatviely, use 30ns/70ns)
+            sync_block.append(self._get_trigger_element(length=25e-9, increment=0, channels=self.sync_channel))
+            sync_block.append(self._get_idle_element(length=25e-9, increment=0))
+
             created_blocks.append(sync_block)
             block_ensemble.append((sync_block.name, 0))
         return created_blocks, block_ensemble
