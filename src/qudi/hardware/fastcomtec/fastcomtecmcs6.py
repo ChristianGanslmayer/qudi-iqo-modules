@@ -191,7 +191,12 @@ class FastComtec(FastCounterInterface):
         """ Initialisation performed during activation of the module.
         """
 
+        # for MPA4T
         self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMPA4.dll')
+        # for MCS6A
+        #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
+        # for MCS6 (old firmware)
+        #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\LMCS6.dll')
         if self.gated:
             self.change_sweep_mode(gated=True)
         else:

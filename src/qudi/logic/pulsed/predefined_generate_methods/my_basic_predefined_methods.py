@@ -443,7 +443,8 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_DEERNVNV(self, name='DEERNVNV', NV2_freq=2870.0e6, NV2_amp=0.001, NV2_rabiperiod=20.0e-9, tau_fixed=200.0e-9,
-                      tau_start = 0.0e-9, tau_step=10.0e-9, num_of_taus=50, alternating=False):
+                      tau_start = 0.0e-9, tau_step=10.0e-9, num_of_taus=50, alternating=False, laser_on=20.0e-9,
+                      laser_off=60.0e-9):
         """
 
         """
@@ -457,9 +458,16 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         # create the elements
         waiting_element = self._get_idle_element(length=self.wait_time,
                                                  increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
+        laser_element = self._get_laser_element(length=self.laser_length,
                                                      increment=0)
-        delay_element = self._get_delay_gate_element()
+        delay_element = self._get_idle_element(length=self.laser_delay,
+                                                 increment=0)
+
+        laser_block = []
+        laser_reps = int(self.laser_length / (laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
 
         # Create block and append to created_blocks list
         deer_block = PulseBlock(name=name)
@@ -501,7 +509,8 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         deer_block.append(mw_element)
         deer_block.append(tau2_element)
         deer_block.append(pihalf_element)
-        deer_block.append(laser_element)
+        for i, laser_trig in enumerate(laser_block):
+            deer_block.append(laser_trig)
         deer_block.append(waiting_element)
 
         if alternating:
@@ -512,7 +521,8 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
             deer_block.append(mw_element)
             deer_block.append(tau2_element)
             deer_block.append(pi3half_element)
-            deer_block.append(laser_element)
+            for i, laser_trig in enumerate(laser_block):
+                deer_block.append(laser_trig)
             deer_block.append(waiting_element)
 
         created_blocks.append(deer_block)
@@ -1698,6 +1708,140 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
+    def generate_DEERDD_tau(self, name='DEERDD_tau', tau_start=0.5e-6, tau_step=0.01e-6, num_of_points=50,
+                         xy8_order=4, tau_fixed=800e-9, laser_on=20.0e-9, laser_off=60.0e-9, init_phase=90.0, read_phase=90.0,
+                         alternating=True):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # get tau array for measurement ticks
+        tau_array = tau_start + np.arange(num_of_points) * tau_step
+        # calculate "real" start length of tau due to finite pi-pulse length
+        real_start_tau = max(0, tau_start - self.rabi_period / 2)
+
+        # create the elements
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+
+        delay_element = self._get_idle_element(length=self.laser_delay, increment=0)
+        initpihalf_element = self._get_mw_element(length=self.rabi_period / 4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=init_phase)
+        readpihalf_element = self._get_mw_element(length=self.rabi_period / 4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=read_phase)
+        readaltpihalf_element = self._get_mw_element(length=self.rabi_period / 4,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=read_phase+180)
+        # Use a 180 deg phase shiftet pulse as 3pihalf pulse if microwave channel is analog
+
+        pix_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=0)
+        piy_element = self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=90)
+        tauhalf_element = self._get_idle_element(length=real_start_tau / 2, increment=tau_step / 2)
+        tau_element = self._get_idle_element(length=real_start_tau, increment=tau_step)
+
+        laser_block = []
+        laser_reps = int(self.laser_length/(laser_on + laser_off))
+        for n in range(laser_reps):
+            laser_block.append(self._get_laser_element(length=laser_on, increment=0))
+            laser_block.append(self._get_idle_element(length=laser_off, increment=0))
+
+
+        # Create block and append to created_blocks list
+        xy8_block = PulseBlock(name=name)
+        xy8_block.append(initpihalf_element)
+        xy8_block.append(tauhalf_element)
+        for n in range(xy8_order):
+            xy8_block.append(pix_element)
+            xy8_block.append(tau_element)
+            xy8_block.append(piy_element)
+            xy8_block.append(tau_element)
+            xy8_block.append(pix_element)
+            xy8_block.append(tau_element)
+            xy8_block.append(piy_element)
+            xy8_block.append(tau_element)
+            xy8_block.append(piy_element)
+            xy8_block.append(tau_element)
+            xy8_block.append(pix_element)
+            xy8_block.append(tau_element)
+            xy8_block.append(piy_element)
+            xy8_block.append(tau_element)
+            xy8_block.append(pix_element)
+            if n != xy8_order - 1:
+                xy8_block.append(tau_element)
+        xy8_block.append(tauhalf_element)
+        xy8_block.append(readpihalf_element)
+        for i, laser_trig in enumerate(laser_block):
+            xy8_block.append(laser_trig)
+        xy8_block.append(delay_element)
+        xy8_block.append(waiting_element)
+        if alternating:
+            xy8_block.append(initpihalf_element)
+            xy8_block.append(tauhalf_element)
+            for n in range(xy8_order):
+                xy8_block.append(pix_element)
+                xy8_block.append(tau_element)
+                xy8_block.append(piy_element)
+                xy8_block.append(tau_element)
+                xy8_block.append(pix_element)
+                xy8_block.append(tau_element)
+                xy8_block.append(piy_element)
+                xy8_block.append(tau_element)
+                xy8_block.append(piy_element)
+                xy8_block.append(tau_element)
+                xy8_block.append(pix_element)
+                xy8_block.append(tau_element)
+                xy8_block.append(piy_element)
+                xy8_block.append(tau_element)
+                xy8_block.append(pix_element)
+                if n != xy8_order - 1:
+                    xy8_block.append(tau_element)
+            xy8_block.append(tauhalf_element)
+            xy8_block.append(readaltpihalf_element)
+            for i, laser_trig in enumerate(laser_block):
+                xy8_block.append(laser_trig)
+            xy8_block.append(delay_element)
+            xy8_block.append(waiting_element)
+        created_blocks.append(xy8_block)
+
+        # Create block ensemble
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((xy8_block.name, num_of_points - 1))
+
+        # Create and append sync trigger block if needed
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # add metadata to invoke settings later on
+        number_of_lasers = num_of_points * 2 if alternating else num_of_points
+        block_ensemble.measurement_information['alternating'] = alternating
+        block_ensemble.measurement_information['laser_ignore_list'] = list()
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
     def generate_xy4_tau(self, name='xy4_tau', tau_start=0.5e-6, tau_step=0.01e-6, num_of_points=50,
                          xy4_order=4, laser_on=20.0e-9, laser_off=60.0e-9, init_phase=90.0, read_phase=90.0,
                          alternating=True):
@@ -1860,7 +2004,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_xy4_order(self, name='xy4_order', half_tau=0.5e-6, num_of_points=50,
-                         laser_on=20.0e-9, laser_off=60.0e-9, init_phase=90.0, read_phase=90.0):
+                         laser_on=20.0e-9, laser_off=60.0e-9, init_phase=90.0, read_phase=90.0, alternating=True):
         """
 
         """
@@ -1966,6 +2110,16 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
             xy8_block.append(delay_element)
             xy8_block.append(waiting_element)
 
+            if alternating:
+                xy8_block.append(initpihalf_element)
+                for i, pulse in enumerate(pulseseq_list):
+                    xy8_block.append(pulse)
+                xy8_block.append(readaltpihalf_element)
+                for i, laser_trig in enumerate(laser_block):
+                    xy8_block.append(laser_trig)
+                xy8_block.append(delay_element)
+                xy8_block.append(waiting_element)
+
         created_blocks.append(xy8_block)
 
         # Create block ensemble
@@ -1976,12 +2130,12 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # add metadata to invoke settings later on
-        number_of_lasers =  num_of_points
-        block_ensemble.measurement_information['alternating'] = False
+        number_of_lasers = num_of_points * 2 if alternating else num_of_points
+        block_ensemble.measurement_information['alternating'] = alternating
         block_ensemble.measurement_information['laser_ignore_list'] = list()
         block_ensemble.measurement_information['controlled_variable'] = order_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
+        block_ensemble.measurement_information['units'] = ('', '')
+        block_ensemble.measurement_information['labels'] = ('Order', 'Signal')
         block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
         block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
@@ -2262,7 +2416,7 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_xy8_order(self, name='xy8_order', half_tau=0.5e-6, num_of_points=50,
-                         laser_on=20.0e-9, laser_off=60.0e-9, init_phase=90.0, read_phase=90.0):
+                         laser_on=20.0e-9, laser_off=60.0e-9, init_phase=90.0, read_phase=90.0, alternating=True):
         """
 
         """
@@ -2366,6 +2520,16 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
             xy8_block.append(delay_element)
             xy8_block.append(waiting_element)
 
+            if alternating:
+                xy8_block.append(initpihalf_element)
+                for i, pulse in enumerate(pulseseq_list):
+                    xy8_block.append(pulse)
+                xy8_block.append(readaltpihalf_element)
+                for i, laser_trig in enumerate(laser_block):
+                    xy8_block.append(laser_trig)
+                xy8_block.append(delay_element)
+                xy8_block.append(waiting_element)
+
         created_blocks.append(xy8_block)
 
         # Create block ensemble
@@ -2376,12 +2540,12 @@ class MyBasicPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # add metadata to invoke settings later on
-        number_of_lasers =  num_of_points
-        block_ensemble.measurement_information['alternating'] = False
+        number_of_lasers = num_of_points * 2 if alternating else num_of_points
+        block_ensemble.measurement_information['alternating'] = alternating
         block_ensemble.measurement_information['laser_ignore_list'] = list()
         block_ensemble.measurement_information['controlled_variable'] = order_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
+        block_ensemble.measurement_information['units'] = ('', '')
+        block_ensemble.measurement_information['labels'] = ('Order', 'Signal')
         block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
         block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
