@@ -192,10 +192,10 @@ class FastComtec(FastCounterInterface):
         """
 
         # for MPA4T
-        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMPA4.dll')
+        #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMPA4.dll')
         # for MCS6A
-        #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
-        # for MCS6 (old firmware)
+        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
+        # for MCS6 (old firmware, no longer applicable after Nov 24 upgrade of our only MCS6 device [which now behaves like a MCS6A device])
         #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\LMCS6.dll')
         if self.gated:
             self.change_sweep_mode(gated=True)
