@@ -286,6 +286,17 @@ class xq1i:
         self.xy8_params['alternating'] = True
         self.xy8_sweeps = 30e3
 
+        self.xy8_order_params = self.pulsed_master_logic.generate_method_params['xy8_order']
+        self.xy8_order_params['name'] = 'xy8_order'
+        self.xy8_order_params['half_tau'] = 250e-9
+        self.xy8_order_params['num_of_points'] = 27
+        self.xy8_order_params['init_phase'] = 90
+        self.xy8_order_params['read_phase'] = 90
+        self.xy8_order_params['laser_on'] = 20.0e-9
+        self.xy8_order_params['laser_off'] = 60.0e-9
+        self.xy8_order_params['alternating'] = True
+        self.xy8_order_sweeps = 1e6
+
         self.QCQB12_params = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB12']
         self.QCQB12_params['name'] = 'quantumcircuitQB12'
         self.QCQB12_params['NV_Cpi_amp'] = self.microwave_amplitude_LowPower
@@ -892,6 +903,16 @@ class xq1i:
         plt.ylabel('norm. counts')
         plt.xlabel(r'$\tau$ (s)')
         plt.show()
+
+
+    def do_XY8_Orderscan(self, poiName):
+        self.sequence_generator_logic.delete_ensemble('xy8_order')
+        self.sequence_generator_logic.delete_block('xy8_order')
+        self.pulsed_master_logic.generate_predefined_sequence('xy8_order', self.xy8_order_params)
+
+        self._executePulsedMeasurement('xy8_order', self.xy8_order_sweeps)
+        self.pulsed_master_logic.save_measurement_data(tag = poiName + f'_xy8_orderscan_tauhalf{self.xy8_order_params["half_tau"]*1e9:.0f}ns',
+                                                       with_error = False)
 
 
     def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readoutCirc=TQReadoutCircs.P00, sweeps=100e3):
