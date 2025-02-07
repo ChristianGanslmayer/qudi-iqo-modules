@@ -1114,6 +1114,18 @@ class PredefinedGeneratorBase:
         return self.generation_parameters.get('laser_length')
 
     @property
+    def pulsed_laser(self):
+        return self.generation_parameters.get('pulsed_laser')
+
+    @property
+    def plaser_on_time(self):
+        return self.generation_parameters.get('plaser_on_time')
+
+    @property
+    def plaser_off_time(self):
+        return self.generation_parameters.get('plaser_off_time')
+
+    @property
     def wait_time(self):
         return self.generation_parameters.get('wait_time')
 
@@ -1234,6 +1246,17 @@ class PredefinedGeneratorBase:
                                                   channels=self.laser_channel)
         laser_element.laser_on = True
         return laser_element
+
+    def _get_xq_laser_block(self):
+        laser_block = PulseBlock(name='laser_block')
+        if self.pulsed_laser:
+            laser_reps = int(self.laser_length / (self.plaser_on_time + self.plaser_off_time))
+            for n in range(laser_reps):
+                laser_block.append( self._get_laser_element(length=self.plaser_on_time, increment=0) )
+                laser_block.append( self._get_idle_element(length=self.plaser_off_time, increment=0) )
+        else:
+            laser_block.append(self._get_laser_element(length=self.laser_length, increment=0))
+        return laser_block
 
     def _get_laser_gate_element(self, length, increment):
         """

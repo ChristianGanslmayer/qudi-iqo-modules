@@ -102,7 +102,10 @@ class SequenceGeneratorLogic(LogicBase):
                  'laser_length': 3e-6,
                  'laser_delay': 500e-9,
                  'wait_time': 1e-6,
-                 'analog_trigger_voltage': 0.0}
+                 'analog_trigger_voltage': 0.0,
+                 'pulsed_laser': False,
+                 'plaser_on_time': 20e-9,
+                 'plaser_off_time': 60e-9}
     )
 
     # The created pulse objects (PulseBlock, PulseBlockEnsemble, PulseSequence) are saved in
