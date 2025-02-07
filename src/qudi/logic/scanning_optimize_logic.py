@@ -309,10 +309,9 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_logic().save_to_history = False  # optimizer scans not saved
             self._sequence_index = 0
             self._optimal_position = dict()
-            #self._scan_logic().sigScannerTargetChanged.emit({'a': 0}, self._scan_logic().module_uuid)
-            #self._scan_logic().sigScannerTargetChanged.emit({'a': 0}, self.module_uuid)
-            self._scan_logic().set_target_position( {'a': self._scan_logic().scanner_constraints.axes['a'].max_value},
-                                                    self.module_uuid, move_blocking=True )
+            self._scan_logic().set_target_position(
+                {'a': self._scan_logic().scanner_constraints.axes['a'].position.bounds[-1]},
+                self.module_uuid, move_blocking=True)
             self.sigOptimizeStateChanged.emit(True, self.optimal_position, None, None)
             self._sigNextSequenceStep.emit()
 
@@ -375,8 +374,9 @@ class ScanningOptimizeLogic(LogicBase):
             # Terminate optimize sequence if finished; continue with next sequence step otherwise
             if self._sequence_index >= len(self._scan_sequence):
                 self.stop_optimize()
-                self._scan_logic().set_target_position( {'a': self._scan_logic().scanner_constraints.axes['a'].min_value},
-                                                        self.module_uuid, move_blocking=True)
+                self._scan_logic().set_target_position(
+                    {'a': self._scan_logic().scanner_constraints.axes['a'].position.bounds[0]},
+                    self.module_uuid, move_blocking=True)
             else:
                 self._sigNextSequenceStep.emit()
             return
@@ -394,7 +394,7 @@ class ScanningOptimizeLogic(LogicBase):
             finally:
                 self._scan_logic().save_to_history = True
                 self.module_state.unlock()
-                self.sigOptimizeStateChanged.emit(False, dict(), None)
+                self.sigOptimizeStateChanged.emit(False, dict(), None, None)
 
     def _get_pos_from_2d_gauss_fit(self, xy, data):
         model = Gaussian2D()
