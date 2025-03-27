@@ -173,8 +173,6 @@ class xq1i:
         self.rabi_params['name'] = 'rabi'
         self.rabi_params['tau_start'] = 2.0e-9
         self.rabi_params['tau_step'] = 2.0e-9
-        self.rabi_params['laser_on'] = 20.0e-9
-        self.rabi_params['laser_off'] = 60.0e-9
         self.rabi_params['num_of_points'] = 50
         self.rabi_params['delay_time'] = 0.0e-6
         self.rabi_sweeps = 60000
@@ -183,8 +181,6 @@ class xq1i:
         self.pulsedODMR_params['name'] = 'pulsedODMR'
         self.pulsedODMR_params['freq_start'] = 1340.0e6
         self.pulsedODMR_params['freq_step'] = 0.50e6
-        self.pulsedODMR_params['laser_on'] = 20.0e-9
-        self.pulsedODMR_params['laser_off'] = 60.0e-9
         self.pulsedODMR_params['RF_pi'] = False
         self.pulsedODMR_params['RF_freq'] = 2.94e6
         self.pulsedODMR_params['RF_amp'] = 0.00
@@ -196,8 +192,6 @@ class xq1i:
         self.ramsey_params['name'] = 'ramsey'
         self.ramsey_params['tau_start'] = 0.0e-9
         self.ramsey_params['tau_step'] = 10.0e-9
-        self.ramsey_params['laser_on'] = 20.0e-9
-        self.ramsey_params['laser_off'] = 60.0e-9
         self.ramsey_params['num_of_points'] = 50
         self.ramsey_params['alternating'] = True
         self.ramsey_sweeps = 100e3
@@ -207,8 +201,6 @@ class xq1i:
         self.hahn_params['tau_start'] = 0.0e-9
         self.hahn_params['tau_step'] = 0.1e-6
         self.hahn_params['num_of_points'] = 50
-        self.hahn_params['laser_on'] = 20.0e-9
-        self.hahn_params['laser_off'] = 60.0e-9
         self.hahn_params['alternating'] = True
         self.hahn_sweeps = 60e3
 
@@ -224,8 +216,6 @@ class xq1i:
         self.nucspect_params['spect_amp'] = self.nucrabi_RFfreq0_amp
         self.nucspect_params['spect_pi'] = 126000e-9
         self.nucspect_params['num_of_points'] = 50
-        self.nucspect_params['laser_on'] = 20.0e-9
-        self.nucspect_params['laser_off'] = 60.0e-9
         self.nucspect_sweeps = 80000
 
         self.nucrabi_params = self.pulsed_master_logic.generate_method_params['NucRabi']
@@ -240,8 +230,6 @@ class xq1i:
         self.nucrabi_params['tau_start'] = 10.0e-9
         self.nucrabi_params['tau_step'] = 16.7e-6
         self.nucrabi_params['num_of_points'] = 25
-        self.nucrabi_params['laser_on'] = 20.0e-9
-        self.nucrabi_params['laser_off'] = 60.0e-9
         self.nucrabi_sweeps = 80000
 
         self.DDrfspect_params = self.pulsed_master_logic.generate_method_params['DDrf_Spect']
@@ -253,8 +241,6 @@ class xq1i:
         self.DDrfspect_params['rot_phase'] = 0
         self.DDrfspect_params['DD_order'] = 10
         self.DDrfspect_params['num_of_points'] = 10
-        self.DDrfspect_params['laser_on'] = 20.0e-9
-        self.DDrfspect_params['laser_off'] = 60.0e-9
         self.DDrfspect_sweeps = 100000
 
         self.axy8_params = self.pulsed_master_logic.generate_method_params['AXY']
@@ -269,8 +255,6 @@ class xq1i:
         self.axy8_params['init_pihalf_pulse'] = True
         self.axy8_params['Init_phase'] = 0
         self.axy8_params['Read_phase'] = 0
-        self.axy8_params['laser_on'] = 20.0e-9
-        self.axy8_params['laser_off'] = 60.0e-9
         self.axy8_sweeps = 20e3
 
         self.xy8_params = self.pulsed_master_logic.generate_method_params['xy8_tau']
@@ -281,8 +265,6 @@ class xq1i:
         self.xy8_params['xy8_order'] = 4
         self.xy8_params['init_phase'] = 90
         self.xy8_params['read_phase'] = 90
-        self.xy8_params['laser_on'] = 20.0e-9
-        self.xy8_params['laser_off'] = 60.0e-9
         self.xy8_params['alternating'] = True
         self.xy8_sweeps = 30e3
 
@@ -292,10 +274,23 @@ class xq1i:
         self.xy8_order_params['num_of_points'] = 27
         self.xy8_order_params['init_phase'] = 90
         self.xy8_order_params['read_phase'] = 90
-        self.xy8_order_params['laser_on'] = 20.0e-9
-        self.xy8_order_params['laser_off'] = 60.0e-9
         self.xy8_order_params['alternating'] = True
         self.xy8_order_sweeps = 1e6
+
+        self.dd_deer_params = self.pulsed_master_logic.generate_method_params['dd_deer']
+        self.dd_deer_params['name'] = 'dd_deer'
+        self.dd_deer_params['tau1'] = 400e-9
+        self.dd_deer_params['tau2_start'] = 0e-9
+        self.dd_deer_params['tau2_step'] = 5e-9
+        self.dd_deer_params['num_of_points'] = 32
+        self.dd_deer_params['mw_freq2'] = 2.666e9
+        self.dd_deer_params['mw_amp2'] = 225e-3
+        self.dd_deer_params['rabi_period2'] = 75e-9
+        self.dd_deer_params['xy8_order'] = 1
+        self.dd_deer_params['read_phase'] = 0
+        self.dd_deer_params['alternating'] = True
+        self.dd_deer_params['initFlipNV1notNV2'] = True
+        self.dd_deer_sweeps = 2e6
 
         self.QCQB12_params = self.pulsed_master_logic.generate_method_params['QuantumCircuitQB12']
         self.QCQB12_params['name'] = 'quantumcircuitQB12'
@@ -913,6 +908,16 @@ class xq1i:
         self._executePulsedMeasurement('xy8_order', self.xy8_order_sweeps)
         self.pulsed_master_logic.save_measurement_data(tag = poiName + f'_xy8_orderscan_tauhalf{self.xy8_order_params["half_tau"]*1e9:.0f}ns',
                                                        with_error = False)
+
+
+    def do_dd_deer(self, poiName):
+        self.sequence_generator_logic.delete_ensemble('dd_deer')
+        self.sequence_generator_logic.delete_block('dd_deer')
+        self.pulsed_master_logic.generate_predefined_sequence('dd_deer', self.dd_deer_params)
+
+        self._executePulsedMeasurement('dd_deer', self.dd_deer_sweeps)
+        self.pulsed_master_logic.save_measurement_data(tag = poiName + f'_dd_deer_tau1_{self.dd_deer_params["tau1"]*1e9:.0f}ns_order_{self.dd_deer_params["xy8_order"]}_readphase_{self.dd_deer_params["read_phase"]}',
+                                                       with_error = True)
 
 
     def do_QuantumCircuitQB12(self, qcQB12, initState=TQstates.State00, readoutCirc=TQReadoutCircs.P00, sweeps=100e3):
