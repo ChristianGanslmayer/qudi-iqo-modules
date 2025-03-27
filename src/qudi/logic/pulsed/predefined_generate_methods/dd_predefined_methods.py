@@ -301,6 +301,103 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
+
+    def generate_dd_deer(self, name='dd_deer', tau1=400e-9, tau2_start=0e-9, tau2_step=5e-9, num_of_points=32,
+                         mw_freq2=2.664e9, mw_amp2=225e-3, rabi_period2=75e-9, xy8_order=1, read_phase=0,
+                         alternating=True, initFlipNV1notNV2=False):
+        """
+
+        """
+        MW_elements = {
+            'MWpix1': self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=0),
+            'MWpiy1': self._get_mw_element(length=self.rabi_period / 2,
+                                           increment=0,
+                                           amp=self.microwave_amplitude,
+                                           freq=self.microwave_frequency,
+                                           phase=90),
+            'MWpix2': self._get_mw_element(length=rabi_period2 / 2,
+                                           increment=0,
+                                           amp=mw_amp2,
+                                           freq=mw_freq2,
+                                           phase=0),
+            'MWpiy2': self._get_mw_element(length=rabi_period2 / 2,
+                                           increment=0,
+                                           amp=mw_amp2,
+                                           freq=mw_freq2,
+                                           phase=90),
+        }
+        laser_block = self._get_xq_laser_block()
+        tau2_array = tau2_start + np.arange(num_of_points) * tau2_step
+        #initpulse_lengths = [self.rabi_period / 4, 3 * self.rabi_period / 4] if alternating else [self.rabi_period / 4]
+        flipNV2_list = [False, True] if alternating else [False]
+        rotAxes = ['x', 'y', 'x', 'y', 'y', 'x', 'y', 'x']
+
+        #print( type(tau1), type(self.rabi_period), type(rabi_period2), type(tau2_array[0]) )
+
+        pulse_block = PulseBlock(name=name)
+        for tau2 in tau2_array:
+            #for initpulse_length in initpulse_lengths:
+            for flipNV2 in flipNV2_list:
+                if flipNV2:
+                    if not initFlipNV1notNV2:
+                        pulse_block.append(MW_elements['MWpix2'])
+                    else:
+                        pulse_block.append(MW_elements['MWpix1'])
+                pulse_block.append(self._get_mw_element(length=self.rabi_period / 4, increment=0,
+                                                        amp=self.microwave_amplitude, freq=self.microwave_frequency, phase=0))
+                delayDelta = - self.rabi_period / 8
+                for n in range(xy8_order):
+                    for rotAx in rotAxes:
+                        pulse_block.append(self._get_idle_element(length=tau1 / 2 - self.rabi_period / 4 + delayDelta , increment=0))
+                        pulse_block.append(MW_elements['MWpi'+rotAx+'1'])
+                        pulse_block.append(self._get_idle_element(length=tau1 / 2 - self.rabi_period / 4 - tau2 - rabi_period2 / 4, increment=0))
+                        pulse_block.append(MW_elements['MWpi'+ rotAx+'2'])
+                        delayDelta = tau2 - rabi_period2 / 4
+                pulse_block.append(self._get_idle_element(length=delayDelta - self.rabi_period / 8, increment=0))
+                pulse_block.append(self._get_mw_element(length=self.rabi_period / 4, increment=0, amp=self.microwave_amplitude,
+                                                        freq=self.microwave_frequency, phase=read_phase))
+                if delayDelta - self.rabi_period / 8 < 0:
+                    pulse_block.append(self._get_mw_element(length=min(-(delayDelta - self.rabi_period / 8), rabi_period2 / 2),
+                                                            increment=0, amp=mw_amp2, freq=mw_freq2, phase=0))
+                if not flipNV2:
+                    pulse_block.append(MW_elements['MWpix2'])
+                else:
+                    if initFlipNV1notNV2:
+                        pulse_block.append(MW_elements['MWpix2'])
+                pulse_block.extend(laser_block)
+                pulse_block.append(self._get_idle_element(length=self.laser_delay, increment=0))
+                pulse_block.append(self._get_idle_element(length=self.wait_time, increment=0))
+
+        # Create block ensemble
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+        created_blocks.append(pulse_block)
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
+        block_ensemble.append((pulse_block.name, 0))
+
+        # Create and append sync trigger block if needed
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # add metadata to invoke settings later on
+        number_of_lasers = num_of_points * 2 if alternating else num_of_points
+        block_ensemble.measurement_information['alternating'] = alternating
+        block_ensemble.measurement_information['laser_ignore_list'] = list()
+        block_ensemble.measurement_information['controlled_variable'] = tau2_array * 8 * xy8_order
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['labels'] = ('t_evol', 'Signal')
+        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        # append ensemble to created ensembles
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
     ################################################################################################
     #                             Generation methods for sequences                                 #
     ################################################################################################

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the Qudi hardware file implementation for FastComtec p7887 .
+This file contains the Qudi hardware file implementation for FastComtec MCS6.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -158,7 +158,7 @@ class BOARDSETTING(ctypes.Structure):
 
 
 class FastComtec(FastCounterInterface):
-    """ Hardware Class for the FastComtec Card.
+    """ Hardware Class for the FastComtec Card MCS6.
 
     stable: Jochen Scheuer, Simon Schmitt
 
@@ -191,10 +191,12 @@ class FastComtec(FastCounterInterface):
         """ Initialisation performed during activation of the module.
         """
 
+        # for MCS8A
+        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS8.dll')
         # for MPA4T
         #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMPA4.dll')
         # for MCS6A
-        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
+        #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
         # for MCS6 (old firmware, no longer applicable after Nov 24 upgrade of our only MCS6 device [which now behaves like a MCS6A device])
         #self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\LMCS6.dll')
         if self.gated:
@@ -427,6 +429,14 @@ class FastComtec(FastCounterInterface):
         self.dll.GetSettingData(ctypes.byref(setting), 0)
         N = setting.range
 
+        status = AcqStatus()
+        self.dll.GetStatusData(ctypes.byref(status), 0)
+        elapsed_sweeps = status.stevents
+        elapsed_time = status.runtime
+
+        info_dict = {'elapsed_sweeps': elapsed_sweeps,
+                     'elapsed_time': elapsed_time}
+
         if self.is_gated():
             bsetting=BOARDSETTING()
             self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
@@ -446,8 +456,8 @@ class FastComtec(FastCounterInterface):
         if self.gated and self.timetrace_tmp != []:
             time_trace = time_trace + self.timetrace_tmp
 
-        info_dict = {'elapsed_sweeps': self.get_current_sweeps(),
-                     'elapsed_time': None}  # TODO : implement that according to hardware capabilities
+        info_dict = {'elapsed_sweeps': elapsed_sweeps,
+                     'elapsed_time': elapsed_time}
         return time_trace, info_dict
 
 

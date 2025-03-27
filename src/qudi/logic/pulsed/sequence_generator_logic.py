@@ -102,7 +102,10 @@ class SequenceGeneratorLogic(LogicBase):
                  'laser_length': 3e-6,
                  'laser_delay': 500e-9,
                  'wait_time': 1e-6,
-                 'analog_trigger_voltage': 0.0}
+                 'analog_trigger_voltage': 0.0,
+                 'pulsed_laser': False,
+                 'plaser_on_time': 20e-9,
+                 'plaser_off_time': 60e-9}
     )
 
     # The created pulse objects (PulseBlock, PulseBlockEnsemble, PulseSequence) are saved in
@@ -1161,6 +1164,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         for sequence in sequences:
             sequence.sampling_information = dict()
+            sequence.generation_method_parameters = kwargs_dict
             self.save_sequence(sequence)
 
         created_name = gen_params.get('name') if 'name' not in kwargs_dict else kwargs_dict['name']

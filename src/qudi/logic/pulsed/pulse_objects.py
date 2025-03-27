@@ -761,6 +761,7 @@ class PulseSequence(object):
         # This container needs to be populated by the script creating the PulseSequence
         # before saving it.
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def refresh_parameters(self):
@@ -796,6 +797,8 @@ class PulseSequence(object):
         if self.ensemble_list != other.ensemble_list:
             return False
         if self.measurement_information != other.measurement_information:
+            return False
+        if self.generation_method_parameters != other.generation_method_parameters:
             return False
         return True
 
@@ -858,6 +861,7 @@ class PulseSequence(object):
         self.ensemble_list[key] = value
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         if stage_refresh:
             self.refresh_parameters()
         return
@@ -900,6 +904,7 @@ class PulseSequence(object):
 
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         if self.ensemble_list[position].repetitions < 0:
             stage_refresh = True
         popped_element = self.ensemble_list.pop(position)
@@ -943,6 +948,7 @@ class PulseSequence(object):
             self.is_finite = False
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def append(self, element):
@@ -960,6 +966,7 @@ class PulseSequence(object):
         del self.ensemble_list[:]
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         self.is_finite = True
         return
 
@@ -967,6 +974,7 @@ class PulseSequence(object):
         self.ensemble_list.reverse()
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def get_dict_representation(self):
@@ -976,6 +984,7 @@ class PulseSequence(object):
         dict_repr['ensemble_list'] = self.ensemble_list
         dict_repr['sampling_information'] = self.sampling_information
         dict_repr['measurement_information'] = self.measurement_information
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters
         return dict_repr
 
     @staticmethod
@@ -985,6 +994,7 @@ class PulseSequence(object):
                                 rotating_frame=sequence_dict['rotating_frame'])
         new_seq.sampling_information = sequence_dict['sampling_information']
         new_seq.measurement_information = sequence_dict['measurement_information']
+        new_seq.generation_method_parameters = sequence_dict['generation_method_parameters']
         return new_seq
 
 
@@ -1102,6 +1112,18 @@ class PredefinedGeneratorBase:
     @property
     def laser_length(self):
         return self.generation_parameters.get('laser_length')
+
+    @property
+    def pulsed_laser(self):
+        return self.generation_parameters.get('pulsed_laser')
+
+    @property
+    def plaser_on_time(self):
+        return self.generation_parameters.get('plaser_on_time')
+
+    @property
+    def plaser_off_time(self):
+        return self.generation_parameters.get('plaser_off_time')
 
     @property
     def wait_time(self):
@@ -1224,6 +1246,17 @@ class PredefinedGeneratorBase:
                                                   channels=self.laser_channel)
         laser_element.laser_on = True
         return laser_element
+
+    def _get_xq_laser_block(self):
+        laser_block = PulseBlock(name='laser_block')
+        if self.pulsed_laser:
+            laser_reps = int(self.laser_length / (self.plaser_on_time + self.plaser_off_time))
+            for n in range(laser_reps):
+                laser_block.append( self._get_laser_element(length=self.plaser_on_time, increment=0) )
+                laser_block.append( self._get_idle_element(length=self.plaser_off_time, increment=0) )
+        else:
+            laser_block.append(self._get_laser_element(length=self.laser_length, increment=0))
+        return laser_block
 
     def _get_laser_gate_element(self, length, increment):
         """
