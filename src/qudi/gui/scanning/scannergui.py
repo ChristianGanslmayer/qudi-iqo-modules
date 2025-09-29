@@ -803,10 +803,15 @@ class ScannerGui(GuiBase):
     @QtCore.Slot(bool, dict, object)
     def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
         self._optimizer_state['is_running'] = is_running
+
+        # Clear the params table when a new optimize run starts
+        if is_running and optimal_position is None and hasattr(self.optimizer_dockwidget, 'clear_fit_params'):
+            self.optimizer_dockwidget.clear_fit_params()
+
         if not is_running:
-            # apply normal scan settings to logic again
-            # they may have been changed by the optimizer logic
+            # apply normal scan settings to logic again (optimizer may have changed them)
             self.apply_scanner_settings()
+
         _is_optimizer_valid_1d = not is_running
         _is_optimizer_valid_2d = not is_running
 
@@ -819,34 +824,48 @@ class ScannerGui(GuiBase):
         if fit_data is not None and optimal_position is None:
             raise ValueError("Can't understand fit_data without optimal position")
 
-        # Update optimal position crosshair and marker
+        # Default to empty so the toggles below don't crash on first call
+        scan_axs = []
+
+        # Update optimal position crosshair/marker
         if isinstance(optimal_position, dict):
             scan_axs = list(optimal_position.keys())
             if len(optimal_position) == 2:
                 _is_optimizer_valid_2d = True
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()), scan_axs)
-
             elif len(optimal_position) == 1:
                 _is_optimizer_valid_1d = True
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())), scan_axs)
+
+        # Plot the fit and update the params table
         if fit_data is not None and isinstance(optimal_position, dict):
             data = fit_data['fit_data']
             fit_res = fit_data['full_fit_res']
+
             if data.ndim == 1:
                 self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
-                sig_z = fit_res.params['sigma'].value
+                sig_z = fit_res.params['sigma'].value if hasattr(fit_res,
+                                                                 'params') and 'sigma' in fit_res.params else None
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())), scan_axs, sigma=sig_z)
-            elif data.ndim == 2:
-                sig_x, sig_y = fit_res.params['sigma_x'].value, fit_res.params['sigma_y'].value
-                self.optimizer_dockwidget.set_2d_position(
-                    tuple(optimal_position.values()), scan_axs, sigma=[sig_x, sig_y]
-                )
+                # <-- keep this line
+                self.optimizer_dockwidget.set_fit_params_from_result(fit_res, axs=tuple(scan_axs))
 
-        # Hide crosshair and 1d marker when scanning
+            elif data.ndim == 2:
+                sig_x = fit_res.params['sigma_x'].value if hasattr(fit_res,
+                                                                   'params') and 'sigma_x' in fit_res.params else None
+                sig_y = fit_res.params['sigma_y'].value if hasattr(fit_res,
+                                                                   'params') and 'sigma_y' in fit_res.params else None
+                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()), scan_axs,
+                                                          sigma=[sig_x, sig_y])
+                # <-- and keep this one too
+                self.optimizer_dockwidget.set_fit_params_from_result(fit_res, axs=tuple(scan_axs))
+
+        # Hide/show crosshair and 1D marker when scanning
         if len(scan_axs) == 2:
             self.optimizer_dockwidget.toogle_crosshair(scan_axs, _is_optimizer_valid_2d)
         else:
             self.optimizer_dockwidget.toogle_crosshair(None, _is_optimizer_valid_2d)
+
         if len(scan_axs) == 1:
             self.optimizer_dockwidget.toogle_marker(scan_axs, _is_optimizer_valid_1d)
         else:

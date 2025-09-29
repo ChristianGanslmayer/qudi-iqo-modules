@@ -20,6 +20,8 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from logging import getLogger
+import os
+import re
 import time
 from typing import Optional, Dict, Tuple, Any, List
 import numpy as np
@@ -385,6 +387,8 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _image_generation_chunk_size: int = ConfigOption(
         name="image_generation_chunk_size", default=1000, constructor=lambda x: int(x)
     )  # if too many points are being calculated at once during image generation, this gives the size of the chunks it should be broken up into
+    _use_recorded_scan: bool = ConfigOption(name='use_recorded_scan', default=False)
+    _recorded_scan_file: str = ConfigOption(name='recorded_scan_file', default='')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -399,6 +403,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         self._back_scan_data = None
 
         self._image_generator: Optional[ImageGenerator] = None
+        self._recorded_scan: Optional[dict] = None  
         # "Hardware" constraints
         self._constraints: Optional[DummyScanConstraints] = None
         # Mutex for access serialization
@@ -473,6 +478,19 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._image_generation_max_calculations,
             indices_to_axis_mapper,
         )
+        if self._use_recorded_scan:
+            try:
+                self._recorded_scan = self._load_recorded_scan(self._recorded_scan_file)
+                if self._recorded_scan is None:
+                    self.log.warning(
+                        f"Recorded scan could not be loaded from '{self._recorded_scan_file}'. Falling back to generator."
+                    )
+            except Exception as exc:
+                self._recorded_scan = None
+                self.log.warning(
+                    f"Failed to load recorded scan from '{self._recorded_scan_file}'. Using generator instead.",
+                    exc_info=exc,
+                )
 
         self.__scan_start = 0
         self.__last_forward_pixel = 0
@@ -659,16 +677,38 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
             scan_vectors = self._init_scan_vectors()
 
-            self._scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
+            if self._use_recorded_scan and self._recorded_scan is not None:
+                if self.scan_settings.scan_dimension == 2:
+                    self._scan_image = self._resample_recorded_to_settings(self._recorded_scan, self.scan_settings)
+                elif self.scan_settings.scan_dimension == 1:
+                    self._scan_image = self._resample_recorded_to_settings_1d(self._recorded_scan, self.scan_settings)
+                else:
+                    self._scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
+            else:
+                self._scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings, constraints=self.constraints, scanner_target_at_start=self.get_target()
             )
             self._scan_data.new_scan()
 
             if self._back_scan_settings is not None:
-                self._back_scan_image = self._image_generator.generate_image(
-                    scan_vectors, self.scan_settings.resolution
-                )
+                if self._use_recorded_scan and self._recorded_scan is not None:
+                    if self.scan_settings.scan_dimension == 2:
+                        self._back_scan_image = self._resample_recorded_to_settings(
+                            self._recorded_scan, self._back_scan_settings
+                        )
+                    elif self.scan_settings.scan_dimension == 1:
+                        self._back_scan_image = self._resample_recorded_to_settings_1d(
+                            self._recorded_scan, self._back_scan_settings
+                        )
+                    else:
+                        self._back_scan_image = self._image_generator.generate_image(
+                            scan_vectors, self.scan_settings.resolution
+                        )
+                else:
+                    self._back_scan_image = self._image_generator.generate_image(
+                        scan_vectors, self.scan_settings.resolution
+                    )
                 self._back_scan_data = ScanData.from_constraints(
                     settings=self.back_scan_settings,
                     constraints=self.constraints,
@@ -826,6 +866,145 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
         return scan_vectors
 
+    def _load_recorded_scan(self, file_path: str) -> Optional[dict]:
+        """Load a previously recorded XY scan from a file.
+
+        Expected format:
+        - Header lines start with '# ' and end with a line containing '---- END HEADER ----'.
+        - Header contains keys like 'x axis resolution', 'y axis resolution', 'x axis min', 'x axis max', etc.
+        - Data block after header is numeric, representing an image with shape (y_res, x_res),
+          rows correspond to Y, columns to X. If flattened, it will be reshaped accordingly.
+        """
+        if not file_path:
+            return None
+        if not os.path.isfile(file_path):
+            self.log.warning(f"Recorded scan file does not exist: {file_path}")
+            return None
+
+        header_lines = []
+        data_start = 0
+        with open(file_path, 'r') as fh:
+            for idx, line in enumerate(fh):
+                if line.startswith('#'):
+                    header_lines.append(line.rstrip('\n'))
+                    if 'END HEADER' in line:
+                        data_start = idx + 1
+                        break
+                else:
+                    # no header marker, assume no header
+                    data_start = idx
+                    break
+
+        # Parse useful header fields
+        header_text = '\n'.join(header_lines)
+        def _search_float(pattern: str, default: Optional[float] = None) -> Optional[float]:
+            m = re.search(pattern, header_text)
+            return float(m.group(1)) if m else default
+        def _search_int(pattern: str, default: Optional[int] = None) -> Optional[int]:
+            m = re.search(pattern, header_text)
+            return int(m.group(1)) if m else default
+
+        x_res = _search_int(r"x axis resolution\s*=\s*([0-9]+)")
+        y_res = _search_int(r"y axis resolution\s*=\s*([0-9]+)")
+        x_min = _search_float(r"x axis min\s*=\s*([0-9eE\.\-\+]+)")
+        x_max = _search_float(r"x axis max\s*=\s*([0-9eE\.\-\+]+)")
+        y_min = _search_float(r"y axis min\s*=\s*([0-9eE\.\-\+]+)")
+        y_max = _search_float(r"y axis max\s*=\s*([0-9eE\.\-\+]+)")
+
+        delimiter = None
+        mdel = re.search(r"delimiter\s*=\s*'([^']+)'", header_text)
+        if mdel:
+            # interpret escaped sequences like '\t'
+            delim_str = mdel.group(1)
+            delimiter = delim_str.encode('utf-8').decode('unicode_escape')
+
+        # Load numeric data
+        try:
+            data = np.loadtxt(file_path, delimiter=delimiter, comments='#', skiprows=data_start)
+        except Exception:
+            # Fallback: generic whitespace
+            data = np.loadtxt(file_path, comments='#', skiprows=data_start)
+
+        # Ensure 2D image shape (rows = Y, cols = X)
+        if x_res is not None and y_res is not None:
+            total = int(x_res) * int(y_res)
+            if data.ndim == 1 and data.size == total:
+                data = data.reshape((y_res, x_res))
+            elif data.ndim == 2 and data.shape != (y_res, x_res):
+                # If transposed, try to fix
+                if data.shape == (x_res, y_res):
+                    data = data.T
+        else:
+            # If header missing, try to infer: prefer wide images (more columns)
+            if data.ndim == 1:
+                # cannot infer robustly; return as 1D
+                pass
+
+        result = {
+            'image': data.astype(float),
+            'x_res': x_res,
+            'y_res': y_res,
+            'x_min': x_min,
+            'x_max': x_max,
+            'y_min': y_min,
+            'y_max': y_max,
+        }
+        return result
+
+    def _resample_recorded_to_settings(self, recorded: dict, settings: ScanSettings) -> np.ndarray:
+        """Resample the recorded image to the requested scan settings using separable linear interpolation.
+
+        Assumes axes are ['x', 'y'] or contain 'x' and 'y'. If metadata missing, falls back to nearest indexing.
+        """
+        img = recorded.get('image')
+        if img is None or img.ndim != 2:
+            # fall back to generator path by forcing caller to handle
+            raise ValueError('Recorded image invalid')
+
+        # Determine requested axes order (fast axis first in settings.resolution[0])
+        try:
+            x_index = settings.axes.index('x')
+            y_index = settings.axes.index('y')
+        except ValueError:
+            # Axes not matching, just return original image (or simple resize by nearest)
+            return img
+
+        req_x_points = settings.resolution[x_index]
+        req_y_points = settings.resolution[y_index]
+
+        # Build source axes
+        src_x_res = recorded.get('x_res') or img.shape[1]
+        src_y_res = recorded.get('y_res') or img.shape[0]
+        src_x_min = recorded.get('x_min', 0.0)
+        src_x_max = recorded.get('x_max', float(src_x_res - 1))
+        src_y_min = recorded.get('y_min', 0.0)
+        src_y_max = recorded.get('y_max', float(src_y_res - 1))
+
+        src_x = np.linspace(src_x_min, src_x_max, src_x_res)
+        src_y = np.linspace(src_y_min, src_y_max, src_y_res)
+
+        # Requested axes from settings
+        req_x_min, req_x_max = settings.range[x_index]
+        req_y_min, req_y_max = settings.range[y_index]
+        dst_x = np.linspace(req_x_min, req_x_max, req_x_points)
+        dst_y = np.linspace(req_y_min, req_y_max, req_y_points)
+
+        # First interpolate along X for each Y row
+        # Vectorized 1D interpolation per row using list comprehension
+        interp_x = np.vstack([np.interp(dst_x, src_x, img_row) for img_row in img])
+
+        # Then interpolate along Y for each X column
+        interp_y_cols = []
+        for col_idx in range(interp_x.shape[1]):
+            col = interp_x[:, col_idx]
+            interp_col = np.interp(dst_y, src_y, col)
+            interp_y_cols.append(interp_col)
+        resampled = np.column_stack(interp_y_cols)
+
+        # Ensure shape (req_y, req_x)
+        resampled = resampled.reshape((req_y_points, req_x_points))
+        return resampled
+
     def _spot_density_constructor(self, spot_density: float) -> float:
         volume_edges = [abs(pos_range[1] - pos_range[0]) for pos_range in self._position_ranges.values()]
         volume = 1
@@ -840,6 +1019,66 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 f"To keep performance, reducing spot density to {spot_density} 1/m"
             )
         return spot_density
+
+    def _resample_recorded_to_settings_1d(self, recorded: dict, settings: ScanSettings) -> np.ndarray:
+        """Generate a 1D line profile from the recorded 2D image at the current target position.
+
+        If the varying axis is 'x', we sample along X at fixed Y = current target 'y'.
+        If the varying axis is 'y', we sample along Y at fixed X = current target 'x'.
+        """
+        img = recorded.get('image')
+        if img is None or img.ndim != 2:
+            raise ValueError('Recorded image invalid for 1D resampling')
+
+        axes = settings.axes
+        if len(axes) != 1:
+            raise ValueError('Expected 1D settings with a single axis')
+
+        var_ax = axes[0]
+        req_points = settings.resolution[0]
+        req_min, req_max = settings.range[0]
+        dst = np.linspace(req_min, req_max, req_points)
+
+        # Source axes
+        src_x_res = recorded.get('x_res') or img.shape[1]
+        src_y_res = recorded.get('y_res') or img.shape[0]
+        src_x_min = recorded.get('x_min', 0.0)
+        src_x_max = recorded.get('x_max', float(src_x_res - 1))
+        src_y_min = recorded.get('y_min', 0.0)
+        src_y_max = recorded.get('y_max', float(src_y_res - 1))
+        src_x = np.linspace(src_x_min, src_x_max, src_x_res)
+        src_y = np.linspace(src_y_min, src_y_max, src_y_res)
+
+        target = self.get_target()
+
+        if var_ax == 'x':
+            # First interpolate along X for all rows at dst positions
+            interp_x = np.vstack([np.interp(dst, src_x, row) for row in img])  # shape (src_y_res, req_points)
+            # Now interpolate along Y at fixed target y for each column
+            ty = target.get('y', float(np.clip(np.mean(src_y), src_y_min, src_y_max)))
+            out = np.empty(req_points, dtype=float)
+            for j in range(req_points):
+                out[j] = np.interp(ty, src_y, interp_x[:, j])
+            return out
+        elif var_ax == 'y':
+            # Interpolate along Y for all columns at dst positions
+            interp_y_cols = []
+            for col_idx in range(img.shape[1]):
+                col = img[:, col_idx]
+                interp_col = np.interp(dst, src_y, col)  # length req_points
+                interp_y_cols.append(interp_col)
+            interp_y = np.column_stack(interp_y_cols)  # shape (req_points, src_x_res)
+            # Now interpolate along X at fixed target x for each row
+            tx = target.get('x', float(np.clip(np.mean(src_x), src_x_min, src_x_max)))
+            out = np.empty(req_points, dtype=float)
+            for i in range(req_points):
+                out[i] = np.interp(tx, src_x, interp_y[i, :])
+            return out
+        else:
+            # Unknown axis; fallback: average across other dimension
+            avg = img.mean(axis=0) if img.shape[1] >= img.shape[0] else img.mean(axis=1)
+            src_axis = src_x if avg.shape[0] == src_x_res else src_y
+            return np.interp(dst, src_axis, avg)
 
 
 class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):

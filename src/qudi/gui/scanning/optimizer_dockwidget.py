@@ -64,10 +64,14 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
                                        symbolPen=QudiPalette.c1,
                                        symbolBrush=QudiPalette.c1,
                                        symbolSize=7)
+                # Fit overlay (solid line)
                 fit_plot_item = XYPlotItem(pen=mkPen(QudiPalette.c2))
+
                 plot1d_widget = DataSelectionPlotWidget()
                 plot1d_widget.set_selection_mutable(False)
                 plot1d_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+                # Add the fit first so it renders under the markers
+                plot1d_widget.addItem(fit_plot_item)
                 plot1d_widget.addItem(plot_item)
                 plot1d_widget.add_marker_selection((0, 0),
                                                    mode=DataSelectionPlotWidget.SelectionMode.X)
@@ -91,6 +95,19 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
 
         layout.addLayout(label_layout, 1, 0, 1, 2)
         layout.setRowStretch(0, 1)
+
+        # --- Fit parameter table (param, value, ±1σ) ---
+        self._fit_table = QtWidgets.QTableWidget(0, 3, self)
+        self._fit_table.setHorizontalHeaderLabels(['param', 'value', '±1σ'])
+        self._fit_table.horizontalHeader().setStretchLastSection(True)
+        self._fit_table.verticalHeader().setVisible(False)
+        self._fit_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self._fit_table.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self._fit_table.setAlternatingRowColors(True)
+        layout.addWidget(self._fit_table, 2, 0, 1, 2)
+
+        # Accumulate rows per axis so (1,1,1) shows x, y, z
+        self._fit_param_rows = {}
 
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
@@ -262,21 +279,38 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         return
 
     def set_fit_data(self, axs, x=None, y=None):
-
+        """
+        Plot the fit curve for the given 1D axes.
+        If x is not provided, inherit the x-array from the data points plot so the
+        fit overlays perfectly. We avoid falling back to indices because that breaks
+        units (e.g., shows 0..N-1 "meters").
+        """
         fit_plot_item = self.get_plot_fit_item(axs)
 
+        # 1) Clear if both are None
         if x is None and y is None:
             fit_plot_item.clear()
             return
-        elif x is None:
-            x = fit_plot_item.xData
-            if x is None or len(x) != len(y):
-                x = np.arange(len(y))
-        elif y is None:
-            y = fit_plot_item.yData
-            if y is None or len(x) != len(y):
-                y = np.zeros(len(x))
 
+        # 2) Ensure we have y
+        if y is None:
+            y = fit_plot_item.yData
+            if y is None:
+                # Nothing sensible to draw
+                fit_plot_item.clear()
+                return
+
+        # 3) Fill x if missing: inherit from the data points plot item
+        if x is None:
+            data_plot_item = self.get_plot_item(axs)
+            x = data_plot_item.xData
+
+        # 4) Final sanity: if x still unusable, do not draw (better than wrong units)
+        if x is None or len(x) != len(y):
+            # nothing to draw correctly; keep previous fit (if any) and exit
+            return
+
+        # 5) Draw
         fit_plot_item.setData(x=x, y=y)
         return
 
@@ -296,4 +330,89 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
 
         widget.setLabel(axis=axis, text=text, units=units)
 
+    def clear_fit_params(self):
+        """Clear stored fit parameters and the table."""
+        self._fit_param_rows.clear()
+        self._fit_table.setRowCount(0)
 
+    def set_fit_params_from_result(self, fit_result, axs):
+        """
+        Store and display fit parameters for the given 1D/2D axes.
+        Shows value ± 1σ (stderr) when available. Accumulates per-axis rows.
+        """
+        axs = tuple(axs)
+
+        wanted = [
+            'amplitude', 'offset',     # common
+            'center', 'sigma',         # 1-D
+            'center_x', 'center_y',    # 2-D
+            'sigma_x', 'sigma_y'       # 2-D
+        ]
+
+        params = getattr(fit_result, 'params', {}) or {}
+        rows = []
+        for name in wanted:
+            if name in params:
+                p = params[name]
+                val = getattr(p, 'value', None)
+                err = getattr(p, 'stderr', None)
+                rows.append((name, val, err))
+
+        # Always add some fit quality info so the section isn't empty
+        for k in ('redchi', 'aic', 'bic'):
+            if hasattr(fit_result, k):
+                rows.append((k, getattr(fit_result, k), None))
+
+        # If still empty (paranoid guard), show a placeholder
+        if not rows:
+            rows = [('(no parameters found)', None, None)]
+
+        # Store/replace rows for this axis tuple
+        self._fit_param_rows[axs] = rows
+
+        # Rebuild table in scanner sequence order
+        # ---- Rebuild table, preferring scanner sequence but falling back to received order ----
+        # Preferred order from scanner sequence (when it matches)
+        seq_1d = [tuple(seq) for seq in self._scanner_sequence if len(seq) == 1]
+        seq_2d = [tuple(seq) for seq in self._scanner_sequence if len(seq) == 2]
+        preferred = [*seq_1d, *seq_2d]
+
+        # Keep only those we actually have rows for
+        groups = [g for g in preferred if g in self._fit_param_rows]
+
+        # Fallback: append any remaining groups in the order they were received
+        for g in self._fit_param_rows.keys():  # dict preserves insertion order
+            if g not in groups:
+                groups.append(g)
+
+        # Nothing to show? Bail out cleanly.
+        if not groups:
+            self._fit_table.setRowCount(0)
+            self._fit_table.viewport().update()
+            return
+
+        # Build rows
+        total_rows = sum(1 + len(self._fit_param_rows[g]) for g in groups)  # header + rows
+        self._fit_table.clearContents()
+        self._fit_table.setRowCount(total_rows)
+
+        r = 0
+        for g in groups:
+            header = f"{g[0]} fit parameters" if len(g) == 1 else f"{g} fit parameters"
+            header_item = QtWidgets.QTableWidgetItem(header)
+            header_item.setFlags(QtCore.Qt.ItemIsEnabled)
+            font = header_item.font();
+            font.setBold(True);
+            header_item.setFont(font)
+            self._fit_table.setItem(r, 0, header_item)
+            self._fit_table.setSpan(r, 0, 1, 3)
+            r += 1
+
+            for name, val, err in self._fit_param_rows[g]:
+                self._fit_table.setItem(r, 0, QtWidgets.QTableWidgetItem(str(name)))
+                self._fit_table.setItem(r, 1, QtWidgets.QTableWidgetItem('—' if val is None else f'{val:.6g}'))
+                self._fit_table.setItem(r, 2, QtWidgets.QTableWidgetItem('n/a' if err is None else f'{err:.2g}'))
+                r += 1
+
+        # Force a repaint (Qt sometimes defers until interaction)
+        self._fit_table.viewport().update()

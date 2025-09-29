@@ -442,6 +442,7 @@ class OdmrGui(GuiBase):
                 self._fit_dockwidget.fit_widget.update_fit_result(*fit_cfg_result)
                 self._plot_widget.set_fit_data(*fit_cfg_result[1].high_res_best_fit)
 
+
     def _fit_clicked(self, fit_config):
         channel = self._scan_control_dockwidget.selected_channel
         range_index = self._scan_control_dockwidget.selected_range
