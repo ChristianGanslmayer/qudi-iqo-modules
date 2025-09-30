@@ -338,61 +338,92 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
     def set_fit_params_from_result(self, fit_result, axs):
         """
         Store and display fit parameters for the given 1D/2D axes.
-        Shows value ± 1σ (stderr) when available. Accumulates per-axis rows.
+        Handles both single-Gaussian (center/sigma/amplitude) and two-Gaussian
+        fits with prefixes 'g1_' and 'g2_' from lmfit GaussianModel.
+        Accumulates per-axis rows so (1,1,1) shows x, y, z together.
         """
         axs = tuple(axs)
-
-        wanted = [
-            'amplitude', 'offset',     # common
-            'center', 'sigma',         # 1-D
-            'center_x', 'center_y',    # 2-D
-            'sigma_x', 'sigma_y'       # 2-D
-        ]
-
         params = getattr(fit_result, 'params', {}) or {}
+
         rows = []
-        for name in wanted:
-            if name in params:
-                p = params[name]
-                val = getattr(p, 'value', None)
-                err = getattr(p, 'stderr', None)
-                rows.append((name, val, err))
+
+        # --- detect two-Gaussian (lmfit) ---
+        is_two_g = any(name.startswith('g1_') for name in params.keys()) or \
+                   any(name.startswith('g2_') for name in params.keys())
+
+        if is_two_g:
+            def grab(prefix, key):
+                p = params.get(f'{prefix}{key}')
+                return (getattr(p, 'value', None), getattr(p, 'stderr', None)) if p is not None else (None, None)
+
+            # We show peak *height* as well (area converted), which is often more intuitive.
+            def height(prefix):
+                area, _ = grab(prefix, 'amplitude')  # lmfit Gaussian amplitude is area
+                sigma, _ = grab(prefix, 'sigma')
+                import math
+                if sigma is None or sigma <= 0 or area is None:
+                    return None
+                return area / (sigma * math.sqrt(2 * math.pi))
+
+            for label, prefix in (('g1', 'g1_'), ('g2', 'g2_')):
+                c, c_err = grab(prefix, 'center')
+                s, s_err = grab(prefix, 'sigma')
+                a_area, a_err = grab(prefix, 'amplitude')
+                h = height(prefix)
+                rows.extend([
+                    (f'{label}: center', c, c_err),
+                    (f'{label}: sigma', s, s_err),
+                    (f'{label}: area', a_area, a_err),
+                    (f'{label}: height', h, None),
+                ])
+
+            # background, if present
+            if 'bkg_c' in params:
+                rows.append(('background', params['bkg_c'].value, getattr(params['bkg_c'], 'stderr', None)))
+
+        else:
+            # --- single Gaussian (your original Gaussian with center/sigma/amplitude) ---
+            def getv(name):
+                p = params.get(name)
+                return (getattr(p, 'value', None), getattr(p, 'stderr', None)) if p is not None else (None, None)
+
+            a, a_e = getv('amplitude')
+            c, c_e = getv('center')
+            s, s_e = getv('sigma')
+            off, off_e = getv('offset')
+            # show what exists
+            for label, val, err in (('amplitude', a, a_e), ('center', c, c_e), ('sigma', s, s_e),
+                                    ('offset', off, off_e)):
+                if val is not None or err is not None:
+                    rows.append((label, val, err))
 
         # Always add some fit quality info so the section isn't empty
         for k in ('redchi', 'aic', 'bic'):
             if hasattr(fit_result, k):
                 rows.append((k, getattr(fit_result, k), None))
 
-        # If still empty (paranoid guard), show a placeholder
+        # Fallback
         if not rows:
             rows = [('(no parameters found)', None, None)]
 
-        # Store/replace rows for this axis tuple
+        # Store per-axis and rebuild table (keep your existing accumulation logic)
         self._fit_param_rows[axs] = rows
 
-        # Rebuild table in scanner sequence order
-        # ---- Rebuild table, preferring scanner sequence but falling back to received order ----
-        # Preferred order from scanner sequence (when it matches)
+        # Preferred order from scanner sequence with fallback to received order
         seq_1d = [tuple(seq) for seq in self._scanner_sequence if len(seq) == 1]
         seq_2d = [tuple(seq) for seq in self._scanner_sequence if len(seq) == 2]
         preferred = [*seq_1d, *seq_2d]
-
-        # Keep only those we actually have rows for
         groups = [g for g in preferred if g in self._fit_param_rows]
-
-        # Fallback: append any remaining groups in the order they were received
-        for g in self._fit_param_rows.keys():  # dict preserves insertion order
+        for g in self._fit_param_rows.keys():
             if g not in groups:
                 groups.append(g)
 
-        # Nothing to show? Bail out cleanly.
         if not groups:
             self._fit_table.setRowCount(0)
             self._fit_table.viewport().update()
             return
 
-        # Build rows
-        total_rows = sum(1 + len(self._fit_param_rows[g]) for g in groups)  # header + rows
+        total_rows = sum(1 + len(self._fit_param_rows[g]) for g in groups)
         self._fit_table.clearContents()
         self._fit_table.setRowCount(total_rows)
 
@@ -414,5 +445,4 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
                 self._fit_table.setItem(r, 2, QtWidgets.QTableWidgetItem('n/a' if err is None else f'{err:.2g}'))
                 r += 1
 
-        # Force a repaint (Qt sometimes defers until interaction)
         self._fit_table.viewport().update()
