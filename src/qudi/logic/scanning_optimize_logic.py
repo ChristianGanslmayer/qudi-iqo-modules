@@ -93,6 +93,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     _sigNextSequenceStep = QtCore.Signal()
 
+    _optimizer_quality_cfg = ConfigOption(name='optimizer_quality', default=None, missing='nothing')
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -106,6 +108,76 @@ class ScanningOptimizeLogic(LogicBase):
         self._avail_axes = tuple()
         self._stashed_settings = None
 
+
+    def _get_quality_cfg(self) -> dict:
+        """Return optimizer quality thresholds with sane defaults sourced from the config."""
+        cached = getattr(self, '_quality_cfg_cache', None)
+        if cached is not None:
+            return cached.copy()
+
+        defaults = {
+            'min_snr': 3.0,
+            'min_amplitude': 0.0,
+            'max_sigma_um': 2.0,
+            'edge_margin_frac': 0.08,
+            'try_two_gaussian': True,
+            'two_peak_min_sep_um': 0.5,
+            'two_peak_amp_ratio_max': 3.0,
+            'fallback_no_move': True,
+        }
+
+        raw_cfg = getattr(self, '_optimizer_quality_cfg', None)
+        if isinstance(raw_cfg, dict):
+            config = defaults.copy()
+            config.update(raw_cfg)
+        elif raw_cfg is None:
+            config = defaults.copy()
+        else:
+            self.log.warning('Optimizer quality config must be a mapping, got %s. Using defaults.', type(raw_cfg).__name__)
+            config = defaults.copy()
+
+        def _float_value(key, *, allow_none=False, minimum=None):
+            value = config.get(key)
+            if value is None:
+                return None if allow_none else defaults[key]
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                self.log.warning('Invalid optimizer quality value for %s=%r, using default %r.', key, value, defaults[key])
+                return defaults[key]
+            if minimum is not None and value < minimum:
+                self.log.warning('Optimizer quality value for %s below minimum (%s). Using default %r.', key, minimum, defaults[key])
+                return defaults[key]
+            return value
+
+        def _bool_value(key):
+            value = config.get(key)
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {'true', '1', 'yes', 'on'}:
+                    return True
+                if lowered in {'false', '0', 'no', 'off'}:
+                    return False
+            if value is None:
+                return defaults[key]
+            self.log.warning('Invalid optimizer quality boolean for %s=%r, using default %r.', key, value, defaults[key])
+            return defaults[key]
+
+        validated = {
+            'min_snr': _float_value('min_snr', minimum=0.0),
+            'min_amplitude': _float_value('min_amplitude', minimum=0.0),
+            'max_sigma_um': _float_value('max_sigma_um', allow_none=True, minimum=0.0),
+            'edge_margin_frac': _float_value('edge_margin_frac', minimum=0.0),
+            'try_two_gaussian': _bool_value('try_two_gaussian'),
+            'two_peak_min_sep_um': _float_value('two_peak_min_sep_um', minimum=0.0),
+            'two_peak_amp_ratio_max': _float_value('two_peak_amp_ratio_max', minimum=0.0),
+            'fallback_no_move': _bool_value('fallback_no_move'),
+        }
+
+        self._quality_cfg_cache = validated
+        return validated.copy()
 
     def on_activate(self):
         """Initialisation performed during activation of the module."""
@@ -426,6 +498,92 @@ class ScanningOptimizeLogic(LogicBase):
                 self.module_state.unlock()
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
 
+
+    def _get_pos_from_1d_gauss_fit(self, x, data):
+        x_arr = np.asarray(x, dtype=float).ravel()
+        y_arr = np.asarray(data, dtype=float).ravel()
+        if x_arr.size != y_arr.size:
+            raise ValueError('x and data must have the same length for 1D Gaussian fits.')
+
+        gauss = GaussianModel()
+        background = ConstantModel(prefix='bkg_')
+        model = gauss + background
+
+        params = gauss.guess(y_arr, x=x_arr)
+        params.update(background.guess(y_arr, x=x_arr))
+        params['amplitude'].set(min=0)
+        params['sigma'].set(min=1e-12)
+
+        fit_result = model.fit(y_arr, params=params, x=x_arr)
+        center = fit_result.best_values.get('center')
+        if center is None and 'center' in fit_result.params:
+            center = fit_result.params['center'].value
+
+        best_fit = fit_result.best_fit
+        return (center,), best_fit, fit_result
+
+    def _get_pos_from_1d_two_gauss_fit(self, axis: str, x, data):
+        x_arr = np.asarray(x, dtype=float).ravel()
+        y_arr = np.asarray(data, dtype=float).ravel()
+        if x_arr.size != y_arr.size:
+            raise ValueError('x and data must have the same length for 1D Gaussian fits.')
+        if x_arr.size == 0:
+            raise ValueError('No data provided for 1D Gaussian fit.')
+
+        g1 = GaussianModel(prefix='g1_')
+        g2 = GaussianModel(prefix='g2_')
+        background = ConstantModel(prefix='bkg_')
+        model = g1 + g2 + background
+
+        baseline = float(np.nanmedian(y_arr)) if y_arr.size else 0.0
+        span = float(np.nanmax(x_arr) - np.nanmin(x_arr)) if x_arr.size > 1 else 1.0
+        sigma_guess = span / 6.0 if span > 0 else 1.0
+        sigma_guess = max(sigma_guess, 1e-9)
+
+        order = np.argsort(y_arr)
+        top1 = int(order[-1])
+        top2 = int(order[-2]) if order.size > 1 else top1
+
+        centers_guess = [float(x_arr[top1]), float(x_arr[top2])]
+        heights = [float(y_arr[top1] - baseline), float(y_arr[top2] - baseline)]
+        mean_x = float(np.nanmean(x_arr)) if np.isfinite(np.nanmean(x_arr)) else 0.0
+        x_min = float(np.nanmin(x_arr))
+        x_max = float(np.nanmax(x_arr))
+
+        for idx in range(2):
+            if not np.isfinite(centers_guess[idx]):
+                centers_guess[idx] = mean_x
+            if not np.isfinite(heights[idx]):
+                heights[idx] = 0.0
+
+        if abs(centers_guess[0] - centers_guess[1]) < 1e-12 and span > 0:
+            shift = 0.15 * span
+            centers_guess[1] = centers_guess[0] + shift if centers_guess[0] <= mean_x else centers_guess[0] - shift
+            centers_guess[1] = min(max(centers_guess[1], x_min), x_max)
+
+        areas = [max(h, 0.0) * sigma_guess * np.sqrt(2 * np.pi) for h in heights]
+        params = model.make_params(
+            g1_center=centers_guess[0],
+            g1_sigma=sigma_guess,
+            g1_amplitude=max(areas[0], 1e-12),
+            g2_center=centers_guess[1],
+            g2_sigma=sigma_guess,
+            g2_amplitude=max(areas[1], 1e-12),
+            bkg_c=baseline,
+        )
+        params['g1_sigma'].set(min=1e-12)
+        params['g2_sigma'].set(min=1e-12)
+        params['g1_amplitude'].set(min=0)
+        params['g2_amplitude'].set(min=0)
+
+        fit_result = model.fit(y_arr, params=params, x=x_arr)
+        centers = (
+            fit_result.best_values.get('g1_center'),
+            fit_result.best_values.get('g2_center'),
+        )
+        best_fit = fit_result.best_fit
+        return centers, best_fit, fit_result
+
     def _get_pos_from_2d_gauss_fit(self, xy, data):
         model = Gaussian2D()
 
@@ -445,389 +603,213 @@ class ScanningOptimizeLogic(LogicBase):
             fit_result,
         )
 
-    def _get_quality_cfg(self) -> dict:
-        """
-        Return quality configuration dict. Reads from module config.
-        Falls back to built-in defaults if not provided.
-        """
-        # Built-in fallback defaults
-        defaults = {
-            'min_snr': 3.0,
-            'max_sigma_um': 2.0,
-            'edge_margin_frac': 0.08,
-            'min_amplitude': 0.0,
-            'try_two_gaussian': True,
-            'two_peak_min_sep_um': 0.5,
-            'two_peak_amp_ratio_max': 3.0,
-            'fallback_no_move': True,
-        }
+    @staticmethod
+    def _is_good_peak(amplitude, offset, q) -> bool:
+        """Return True if amplitude and amplitude/offset pass thresholds."""
+        if amplitude is None or not np.isfinite(amplitude):
+            return False
+        if amplitude < q['min_amplitude']:
+            return False
+        denom = abs(offset) if (offset is not None and np.isfinite(offset)) else None
+        if denom is None or denom <= 1e-12:
+            # If we can't define amplitude/offset robustly, treat SNR gate as inconclusive -> reject
+            return False
+        return (amplitude / denom) >= q['min_snr']
 
-        logic_cfg = getattr(self, 'config', None)
-        if isinstance(logic_cfg, dict):
-            cfg = dict(defaults)
-            cfg.update(logic_cfg.get('optimizer_quality', {}))
-        else:
-            cfg = defaults
 
-        self._quality_cfg = cfg
-        return cfg
+    @staticmethod
+    def _first_finite(value, *fallbacks):
+        """Return the first finite float among value and fallbacks; else None."""
+        for v in (value, *fallbacks):
+            try:
+                v = float(v)
+                if np.isfinite(v):
+                    return v
+            except Exception:
+                pass
+        return None
 
-    def _get_pos_from_1d_gauss_fit(self, x, data):
-        model = Gaussian()
-
-        try:
-            fit_result = model.fit(data, x=x, **model.estimate_peak(data, x))
-        except:
-            x_min, x_max = x.min(), x.max()
-            middle = (x_max - x_min) / 2 + x_min
-            self.log.exception('1D Gaussian fit unsuccessful.')
-            return (middle,), None, None
-
-        return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
 
     def _get_pos_from_1d_fit_decide(self, axis: str, x, data):
         """
-        Decide best position for a 1D scan along `axis`:
-          1) try 1-Gaussian; if OK -> use it
-          2) if bad OR 1-Gaussian fails -> try 2-Gaussian; if OK -> use peak nearer to current pos
-          3) else -> no move (current position)
-        Always returns ((pos,), best_fit_array, fit_result_like) with best_fit_array != None.
-        Attaches `assessment` dict to the returned fit_result object.
+        Simplified decision:
+        1) Try single-Gaussian. If amplitude & amplitude/offset pass -> MOVE to center.
+        2) Else try two-Gaussian:
+            - if exactly one good component -> MOVE to its center
+            - if two good components -> MOVE to the center closer to current position
+            - if none good -> DON'T MOVE, return current position (or scan midpoint if unknown)
+        Always returns ((pos,), best_fit_array, fit_result_like) and attaches `.assessment`.
         """
         x = np.asarray(x).ravel()
         y = np.asarray(data).ravel()
+        q = self._get_quality_cfg()
+
+        # Helper to build final tuple and log
+        def _final(pos, bestfit, res, status, reason, used_model, extra=None):
+            assessment = {
+                'status': status,           # 'MOVE' or 'NO_MOVE'
+                'reason': reason,           # short string
+                'used_model': used_model,   # 'gaussian1' or 'gaussian2'
+                'recommended_pos': pos,
+            }
+            if extra:
+                assessment.update(extra)
+            setattr(res, 'assessment', assessment)
+            if hasattr(self, 'log'):
+                level = self.log.info if status == 'MOVE' else self.log.warning
+                level("Optimizer(1D %s): %s (model=%s, reason=%s) -> %.6g",
+                    axis, 'moving' if status == 'MOVE' else 'not moving',
+                    used_model, reason, pos if pos is not None else float('nan'))
+            return (pos,), (bestfit if bestfit is not None else y.copy()), res
 
         # ----------------
         # 1) Single-Gaussian
         # ----------------
         pos1, bestfit1, res1 = self._get_pos_from_1d_gauss_fit(x, y)
-
-        # If 1-Gaussian produced a result, assess it
         if res1 is not None:
-            dec1 = self._assess_1d_fit(x, y, res1, model='gaussian1')
-            if dec1.status.name == 'OK':
-                assessment = {
-                    'status': 'OK',
-                    'reason': 'ok',
-                    'used_model': 'gaussian1',
-                    'recommended_pos': dec1.recommended_pos,
-                    'diagnostics': dec1.diagnostics,
-                    'peaks': None,
-                }
-                setattr(res1, 'assessment', assessment)
+            # Try to read amplitude/offset robustly from params/best_values
+            params = getattr(res1, 'params', None)
+            best_vals = getattr(res1, 'best_values', {}) or {}
 
-                if hasattr(self, 'log'):
-                    self.log.info(
-                        "Optimizer(1D %s): using single-Gaussian fit @ %.6g (redchi=%s)",
-                        axis, dec1.recommended_pos,
-                        getattr(res1, 'redchi', None)
-                    )
+            # Common names
+            amp = None
+            off = None
+            center = None
 
-                return (dec1.recommended_pos,), bestfit1, res1
-        else:
-            # Ensure bestfit1 is a valid array so callers don't skip movement logic
-            bestfit1 = y.copy()
+            # Amplitude / center
+            for name in ('amplitude', 'amp', 'A', 'height', 'ampl'):
+                if params and name in params and getattr(params[name], 'value', None) is not None:
+                    amp = params[name].value
+                    break
+                if name in best_vals:
+                    amp = best_vals[name]
+                    break
+            center = self._first_finite(
+                (params['center'].value if (params and 'center' in params) else None),
+                best_vals.get('center'),
+                pos1[0] if (pos1 and pos1[0] is not None) else None
+            )
 
-        # ----------------
-        # 2) Two-Gaussian fallback (even if 1-Gaussian failed)
-        # ----------------
-        q = self._get_quality_cfg()
-        if q.get('try_two_gaussian', True):
-            try:
-                pos2, bestfit2, res2 = self._get_pos_from_1d_two_gauss_fit(axis, x, y)
-                # Assess 2-G result (basic checks reused)
-                dec2 = self._assess_1d_fit(x, y, res2, model='gaussian2')
-                if dec2.status.name == 'OK':
-                    chosen = pos2[0]
-                    # Try to collect both peaks
-                    peaks = None
-                    try:
-                        p = res2.params
-                        peaks = [
-                            {'center': p['g1_center'].value, 'sigma': p['g1_sigma'].value,
-                             'amp_area': p['g1_amplitude'].value},
-                            {'center': p['g2_center'].value, 'sigma': p['g2_sigma'].value,
-                             'amp_area': p['g2_amplitude'].value},
-                        ]
-                    except Exception:
-                        pass
-                    assessment = {
-                        'status': 'OK',
-                        'reason': 'two_gauss_ok',
-                        'used_model': 'gaussian2',
-                        'recommended_pos': chosen,
-                        'diagnostics': dec2.diagnostics,
-                        'peaks': peaks,
-                    }
-                    setattr(res2, 'assessment', assessment)
+            # Offset / constant background (if model had one)
+            for name in ('offset', 'bkg', 'bkg_c', 'const', 'c'):
+                if params and name in params and getattr(params[name], 'value', None) is not None:
+                    off = params[name].value
+                    break
+                if name in best_vals:
+                    off = best_vals[name]
+                    break
 
-                    if hasattr(self, 'log'):
-                        self.log.info(
-                            "Optimizer(1D %s): using two-Gaussian fit @ %.6g (redchi=%s)",
-                            axis, chosen, getattr(res2, 'redchi', None)
-                        )
-
-                    return (chosen,), bestfit2, res2
-                else:
-                    # keep res2/bestfit2 for plotting/diagnostics
-                    bad_res = res2
-                    bad_bestfit = bestfit2
-                    bad_reason = dec2.reason
-                    bad_diag = dec2.diagnostics
-            except Exception:
-                bad_res = None
-                bad_bestfit = None
-                bad_reason = 'fit_failed_two_gauss'
-                bad_diag = {}
-        else:
-            bad_res = None
-            bad_bestfit = None
-            bad_reason = 'two_gauss_disabled'
-            bad_diag = {}
+            if center is not None and self._is_good_peak(self._first_finite(amp), self._first_finite(off), q):
+                return _final(center, bestfit1, res1, status='MOVE',
+                            reason='single_gauss_good', used_model='gaussian1',
+                            extra={'peaks': [{'label': 'g1', 'center': center, 'amplitude': self._first_finite(amp), 'offset': self._first_finite(off)}]})
 
         # ----------------
-        # 3) Both bad → no move; return current position (or scan midpoint if unknown)
+        # 2) Two-Gaussian
         # ----------------
+        try:
+            pos2, bestfit2, res2 = self._get_pos_from_1d_two_gauss_fit(axis, x, y)
+        except Exception:
+            # Fit failed outright -> treat as both-bad and fall through to NO_MOVE
+            pos2, bestfit2, res2 = (None,), None, type('Dummy', (), {})()
+
+        # Extract components
+        good_peaks = []
+        all_peaks = []
+        params2 = getattr(res2, 'params', {}) or {}
+
+        # Background offset for SNR gate
+        off2 = None
+        for name in ('offset', 'bkg', 'bkg_c', 'const', 'c'):
+            if name in params2 and getattr(params2[name], 'value', None) is not None:
+                off2 = params2[name].value
+                break
+
+        # For GaussianModel, 'amplitude' is AREA; compute height = area/(sigma*sqrt(2π))
+        def _height(area, sigma):
+            if area is None or sigma is None or sigma <= 0:
+                return None
+            return area / (sigma * np.sqrt(2 * np.pi))
+
+        for idx, prefix in enumerate(('g1_', 'g2_'), start=1):
+            c = self._first_finite(params2.get(f'{prefix}center', None).value if f'{prefix}center' in params2 else None)
+            a_area = self._first_finite(params2.get(f'{prefix}amplitude', None).value if f'{prefix}amplitude' in params2 else None)
+            sig = self._first_finite(params2.get(f'{prefix}sigma', None).value if f'{prefix}sigma' in params2 else None)
+            a = _height(a_area, sig)  # use HEIGHT for thresholds
+            peak = {'label': f'g{idx}', 'center': c, 'amplitude': a, 'offset': self._first_finite(off2), 'sigma': sig}
+            all_peaks.append(peak)
+            if c is not None and self._is_good_peak(a, self._first_finite(off2), q):
+                good_peaks.append(peak)
+
         curr = self._get_current_axis_position(axis)
         if curr is None:
-            # Fallback so we never crash; also log if useful
+            # Fall back to scan midpoint
             x_min, x_max = float(np.nanmin(x)), float(np.nanmax(x))
             curr = 0.5 * (x_min + x_max)
-            if hasattr(self, 'log'):
-                self.log.warning("Optimizer: current position for axis '%s' unavailable; "
-                                 "falling back to scan midpoint.", axis)
 
-        # prefer some non-None bestfit for the GUI
-        bestfit = bad_bestfit if bad_bestfit is not None else bestfit1
-        if bestfit is None:
-            bestfit = y.copy()
+        if len(good_peaks) == 1:
+            chosen = good_peaks[0]['center']
+            return _final(chosen, bestfit2 if bestfit2 is not None else bestfit1, res2,
+                        status='MOVE', reason='two_gauss_one_good', used_model='gaussian2',
+                        extra={'peaks': all_peaks})
 
-        # attach assessment to whichever result object we have
-        res = bad_res if bad_res is not None else (res1 if res1 is not None else type('Dummy', (), {})())
-        assessment = {
-            'status': 'REJECTED_NOT_NV',
-            'reason': bad_reason if bad_res is not None else (
-                dec1.reason if (res1 is not None) else 'fit_failed_single'),
-            'used_model': 'gaussian2' if bad_res is not None else ('gaussian1' if res1 is not None else 'none'),
-            'recommended_pos': None,
-            'diagnostics': bad_diag if bad_res is not None else (dec1.diagnostics if (res1 is not None) else {}),
-            'peaks': None,
-        }
-        setattr(res, 'assessment', assessment)
+        if len(good_peaks) == 2:
+            # choose closer to current position
+            d0 = abs(good_peaks[0]['center'] - curr)
+            d1 = abs(good_peaks[1]['center'] - curr)
+            chosen = good_peaks[0]['center'] if d0 <= d1 else good_peaks[1]['center']
+            return _final(chosen, bestfit2 if bestfit2 is not None else bestfit1, res2,
+                        status='MOVE', reason='two_gauss_both_good_closest_to_curr', used_model='gaussian2',
+                        extra={'current_pos': curr, 'peaks': all_peaks})
 
-        if hasattr(self, 'log'):
-            self.log.warning("Optimizer(1D %s): rejecting move (reason=%s) -> staying at %.6g",
-                             axis, assessment['reason'], curr)
-
-        return (curr,), bestfit, res
-
-    def _get_current_axis_position(self, axis: str):
-        """
-        Try to read current scanner position along `axis` from several likely providers.
-        Returns float position if available, otherwise None (no exception).
-        """
-        # Common attributes used across setups
-        provider_names = (
-            '_scanner', 'scanner',  # hardware/logic
-            '_scan_logic', 'scan_logic',  # other logic
-            '_scanner_logic', 'scanner_logic',
-            '_positioner', '_stage', '_confocal',
-        )
-        for name in provider_names:
-            obj = getattr(self, name, None)
-            if obj is None or not hasattr(obj, 'get_position'):
-                continue
-            try:
-                pos = obj.get_position()
-            except Exception:
-                continue
-            if isinstance(pos, dict) and axis in pos:
-                try:
-                    return float(pos[axis])
-                except Exception:
-                    pass
-
-        # Optional: fall back to a cached last known pos if you keep one
-        for cache_name in ('_last_optimal_pos', '_last_position', 'last_position'):
-            pos = getattr(self, cache_name, None)
-            if isinstance(pos, dict) and axis in pos:
-                try:
-                    return float(pos[axis])
-                except Exception:
-                    pass
-
-        # Nothing found
-        return None
+        # ----------------
+        # 3) Neither good -> don't move
+        # ----------------
+        # Prefer some best_fit for GUI
+        bestfit = bestfit2 if bestfit2 is not None else (bestfit1 if bestfit1 is not None else y.copy())
+        dummy = res2 if res2 is not None else (res1 if res1 is not None else type('Dummy', (), {})())
+        return _final(curr, bestfit, dummy, status='NO_MOVE', reason='no_good_peak', used_model='gaussian2',
+                    extra={'current_pos': curr, 'peaks': all_peaks})
 
 
-    def _get_pos_from_1d_two_gauss_fit(self, axis: str, x, data):
-        """
-        Fit a sum of two 1D Gaussians plus a constant background.
-        Returns: ((best_center,), best_fit, fit_result)
 
-        - Chooses initial centers from the two highest points (after background estimate).
-        - Picks the component with the larger fitted amplitude as the 'best_center'.
-        """
-        # --- prepare data ---
-        x = np.asarray(x).ravel()
-        y = np.asarray(data).ravel()
-        mask = np.isfinite(x) & np.isfinite(y)
-        x = x[mask]
-        y = y[mask]
-        if x.size < 3:
-            raise ValueError("Not enough finite points for two-Gaussian fit")
+    def _get_current_axis_position(self, axis: str) -> Optional[float]:
+        # Return the current scanner position for a given axis or None if unavailable.
+        scan_logic: ScanningProbeLogic = self._scan_logic()
 
-        xmin, xmax = float(x.min()), float(x.max())
-        span = xmax - xmin if xmax > xmin else 1.0
-
-        # --- crude background + peak seeds ---
-        # robust baseline: lower decile
-        bkg0 = float(np.nanpercentile(y, 10))
-        y0 = y - bkg0
-
-        # seed centers: indices of two largest values after baseline subtraction
-        # (works without scipy)
-        if y0.size >= 2:
-            top2_idx = np.argpartition(y0, -2)[-2:]
-        else:
-            top2_idx = np.array([np.argmax(y0), np.argmax(y0)])  # degenerate case
-
-        # sort by x so g1 is left, g2 is right (stable parameterization)
-        top2_idx = top2_idx[np.argsort(x[top2_idx])]
-        i1, i2 = int(top2_idx[0]), int(top2_idx[1])
-
-        c1_0, c2_0 = float(x[i1]), float(x[i2])
-        a1_0, a2_0 = max(float(y0[i1]), 1.0), max(float(y0[i2]), 1.0)
-        # heuristic sigma: 1/10 of span (clamped)
-        sig0 = max(0.05 * span, 1e-12)
-
-        # ensure distinct initial centers (tiny nudge if identical)
-        if abs(c2_0 - c1_0) < 1e-15:
-            c2_0 = min(xmax, c1_0 + 0.01 * span)
-
-        # --- build model: two Gaussians + constant background ---
-        g1 = GaussianModel(prefix='g1_')
-        g2 = GaussianModel(prefix='g2_')
-        bkg = ConstantModel(prefix='bkg_')
-        model = g1 + g2 + bkg
-
-        params = model.make_params()
-
-        # background
-        params['bkg_c'].set(value=bkg0)
-
-        # g1 seeds and bounds
-        params['g1_center'].set(value=c1_0, min=xmin, max=xmax)
-        params['g1_sigma'].set(value=sig0, min=span * 1e-6, max=span)  # positive, sane upper
-        params['g1_amplitude'].set(value=a1_0 * sig0 * np.sqrt(2 * np.pi), min=0.0)  # area ~ amp*sig*sqrt(2π)
-
-        # g2 seeds and bounds
-        params['g2_center'].set(value=c2_0, min=xmin, max=xmax)
-        params['g2_sigma'].set(value=sig0, min=span * 1e-6, max=span)
-        params['g2_amplitude'].set(value=a2_0 * sig0 * np.sqrt(2 * np.pi), min=0.0)
-
-        # optional soft constraint: centers at least a tiny fraction apart (kept heuristic)
-        # If you later want a hard constraint, you can reparameterize centers.
-        # For now we leave it to the data + bounds.
-
-        # --- fit ---
+        position = None
         try:
-            fit_result = model.fit(y, params, x=x, nan_policy='omit', max_nfev=5000)
+            position = scan_logic.scanner_position
         except Exception as exc:
-            # If the fit fails, return a degenerate result similar to the 1-Gauss API
-            # so the caller can decide what to do.
-            # Here we just raise; or you could fall back to single-Gaussian.
-            raise
+            if hasattr(self, 'log'):
+                self.log.debug('Unable to query current scanner position directly.', exc_info=exc)
 
-        curr = self._get_current_axis_position(axis)
+        if not isinstance(position, dict):
+            position = None
 
-        c1 = fit_result.params['g1_center'].value
-        c2 = fit_result.params['g2_center'].value
+        value = None
+        if position is not None:
+            value = position.get(axis)
 
-        if (curr is not None) and (c1 is not None) and (c2 is not None):
-            chosen_center = c1 if abs(c1 - curr) <= abs(c2 - curr) else c2
-        else:
-            # Fallback: choose the higher peak if we don't know current position
-            def peak_height(prefix):
-                area = fit_result.params[f'{prefix}amplitude'].value
-                sigma = fit_result.params[f'{prefix}sigma'].value
-                if sigma is None or sigma <= 0:
-                    return -np.inf
-                return area / (sigma * np.sqrt(2 * np.pi))
+        if value is None:
+            try:
+                target = scan_logic.scanner_target
+            except Exception:
+                target = None
+            if isinstance(target, dict):
+                value = target.get(axis)
 
-            chosen_center = c1 if peak_height('g1_') >= peak_height('g2_') else c2
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
 
-        chosen_center = float(chosen_center) if chosen_center is not None else None
-        return (chosen_center,), fit_result.best_fit, fit_result
+        if not np.isfinite(value):
+            return None
 
-    def _assess_1d_fit(self, x, y, fit_result, model='gaussian1') -> FitDecision:
-        """Assess quality of a 1D Gaussian fit and decide if the result is usable."""
-        params = fit_result.params
+        return value
 
-        # Get core parameters
-        center = params['center'].value if 'center' in params else None
-        sigma_val = params['sigma'].value if 'sigma' in params else None
 
-        # Robust amplitude/offset lookup (handles 1D and 2D naming variations)
-        amplitude_names = ['amplitude', 'amp', 'A', 'height']
-        offset_names = ['offset', 'bkg', 'bkg_c', 'const', 'c']
-        amp_val = self._get_param_value(params, amplitude_names)
-        off_val = self._get_param_value(params, offset_names)
-
-        # Load thresholds
-        q = self._get_quality_cfg()
-        x_min, x_max = float(x.min()), float(x.max())
-        margin = (x_max - x_min) * q['edge_margin_frac']
-
-        # Compute contrast (SNR proxy)
-        snr = None
-        if amp_val is not None and off_val is not None:
-            denom = abs(off_val)
-            if denom > 1e-12:
-                snr = abs(amp_val) / denom
-
-        # Fallback to crude metric if no valid contrast
-        if snr is None or not np.isfinite(snr):
-            snr = np.ptp(y) / (np.std(y) + 1e-9)
-
-        # Decide
-        reason = None
-        if amp_val is not None and amp_val < q['min_amplitude']:
-            reason = 'low_amplitude'
-        elif sigma_val is not None and sigma_val * 1e6 > q['max_sigma_um']:
-            reason = 'sigma_out_of_bounds'
-        elif center is not None and (center < x_min + margin or center > x_max - margin):
-            reason = 'edge_peak'
-        elif hasattr(fit_result, 'redchi') and fit_result.redchi > 2.0:
-            reason = 'high_redchi'
-        elif snr < q['min_snr']:
-            reason = 'low_snr'
-
-        if reason is None:
-            return FitDecision(FitStatus.OK, 'ok', center, {
-                'snr': snr, 'redchi': getattr(fit_result, 'redchi', None)
-            }, model)
-
-        # If single-Gauss rejected and allowed, try two-Gaussian fallback
-        if model == 'gaussian1' and q['try_two_gaussian']:
-            return FitDecision(FitStatus.TWO_PEAKS, reason, None, {
-                'snr': snr, 'redchi': getattr(fit_result, 'redchi', None)
-            }, model)
-
-        # Otherwise reject
-        amp_str = f"{amp_val:.3g}" if amp_val is not None else "n/a"
-        sigma_str = f"{sigma_val * 1e6:.3g}" if sigma_val is not None else "n/a"
-        redchi_val = getattr(fit_result, 'redchi', None)
-        redchi_str = f"{redchi_val:.3g}" if redchi_val is not None else "n/a"
-        snr_str = f"{snr:.3g}" if snr is not None and np.isfinite(snr) else "n/a"
-
-        self.log.warning(
-            f"Fit rejected on model={model}: reason={reason}, "
-            f"amp={amp_str}, sigma={sigma_str} µm, redchi={redchi_str}, contrast={snr_str}"
-        )
-        return FitDecision(FitStatus.REJECTED_NOT_NV, reason, None, {
-            'snr': snr, 'redchi': getattr(fit_result, 'redchi', None)
-        }, model)
 
     def _get_param_value(self, params, candidate_names):
         """Return first available lmfit Parameter.value from candidate_names, else None."""
@@ -900,3 +882,9 @@ class ScanningOptimizeLogic(LogicBase):
     @_scan_sequence.constructor
     def sequence_constructor(self, sequence: Union[list, tuple]) -> tuple:
         return tuple(tuple(value) for value in sequence)
+
+
+
+
+
+
