@@ -388,7 +388,36 @@ class ScanningOptimizeLogic(LogicBase):
                     with self._result_lock:
                         self._last_scans.append(cp.copy(data))
                         self._last_fits.append(fit_res)
-                    self.sigOptimizeStateChanged.emit(True, position_update, fit_data, fit_res.model.eval(fit_res.params, x=opt_pos))
+
+                    # Evaluate fitted model at the optimal position for convenience.
+                    # Ensure numeric scalars are passed instead of tuples/lists to avoid
+                    # "can't multiply sequence by non-int of type 'float'" from lmfit.
+                    eval_value = None
+                    try:
+                        if fit_res is not None and getattr(fit_res, 'model', None) is not None:
+                            indep = getattr(fit_res.model, 'independent_vars', ['x'])
+                            if not isinstance(indep, (list, tuple)):
+                                indep = ['x']
+
+                            # Normalize opt_pos to a sequence
+                            if isinstance(opt_pos, (list, tuple, np.ndarray)):
+                                opt_seq = opt_pos
+                            else:
+                                opt_seq = [opt_pos]
+
+                            kwargs = {}
+                            for i, var in enumerate(indep):
+                                if i < len(opt_seq):
+                                    # Cast to float to guarantee numeric type
+                                    kwargs[var] = float(opt_seq[i])
+
+                            val = fit_res.model.eval(fit_res.params, **kwargs)
+                            # Convert potential numpy scalar/array to plain float
+                            eval_value = float(np.ravel(val)[0])
+                    except Exception:
+                        self.log.exception('Failed to evaluate fit at optimal position')
+
+                    self.sigOptimizeStateChanged.emit(True, position_update, fit_data, eval_value)
 
                     # Abort optimize if fit failed
                     if fit_data is None:
