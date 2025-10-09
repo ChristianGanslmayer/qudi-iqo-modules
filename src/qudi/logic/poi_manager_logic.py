@@ -617,7 +617,19 @@ class PoiManagerLogic(LogicBase):
 
     @property
     def scanner_position(self):
-        return np.array(list(self._scanninglogic().scanner_position.values())[:3])
+        # Ensure a consistent 3D position vector [x, y, z] regardless of
+        # how many axes the scanner exposes. Some scanners provide more than
+        # three axes (e.g. rotation), which previously led to a shape
+        # mismatch when creating POIs. Prefer named axes and fall back to
+        # the current ROI origin for any missing component.
+        pos_dict = self._scanninglogic().scanner_position
+        # Normalize keys to lowercase for robust axis name matching
+        pos_dict = {str(k).lower(): v for k, v in pos_dict.items()}
+        origin = self._roi.origin if self._roi is not None else np.zeros(3)
+        x = pos_dict.get('x', float(origin[0]))
+        y = pos_dict.get('y', float(origin[1]))
+        z = pos_dict.get('z', float(origin[2]))
+        return np.array([x, y, z], dtype=float)
 
     @property
     def move_scanner_after_optimise(self):
@@ -1110,7 +1122,7 @@ class PoiManagerLogic(LogicBase):
                 else:
                     self.__poi_optimization_running = False
                     poi_name = self._optimize_poi_name
-                    new_pos = np.array(list( dict(sorted(self._position_update.items())).values() ))
+                    new_pos = np.array(list(self._position_update.values()))
                     if poi_name in self.poi_names:
                         if self._update_roi_position:
                             self.move_roi_from_poi_position(name=poi_name, position=new_pos)
